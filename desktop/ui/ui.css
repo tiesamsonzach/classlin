@@ -1,0 +1,165 @@
+:root { --ui: 1; }
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  color: #1a2420;
+  background: #efe6d6;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+
+button, input { font: inherit; color: inherit; }
+
+button { cursor: pointer; }
+
+.pine { background: #14352a; color: #f4efe4; }
+
+.card {
+  background: #fffaf2;
+  border: 1px solid #e3d8c4;
+  border-radius: 0.9rem;
+}
+
+input {
+  width: 100%;
+  border: 2px solid #e3d8c4;
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 0.7rem 0.8rem;
+  font-size: 1rem;
+}
+
+button:focus-visible, input:focus-visible {
+  outline: 3px solid #e39a45;
+  outline-offset: 2px;
+}
+
+.primary, .secondary {
+  width: 100%;
+  min-height: 2.8rem;
+  border-radius: 0.8rem;
+  font-size: 1.05rem;
+  font-weight: 750;
+}
+
+.primary { border: 0; background: #14352a; color: white; }
+.secondary { background: white; color: #14352a; border: 2px solid #14352a; }
+
+.hint { color: #5e6a62; font-size: 0.92rem; }
+.bad { color: #9d1c1c; font-weight: 700; }
+
+body.main { display: flex; flex-direction: column; }
+.main-hero { padding: 1rem 1.1rem 0.9rem; }
+.main-hero h1 { margin: 0.2rem 0 0; font-size: 1.55rem; }
+.brand { margin: 0; letter-spacing: 0.06em; color: #d7e6dc; font-size: 0.85rem; }
+.main-body { padding: 0.9rem 1rem 1.1rem; overflow: auto; }
+
+label { display: block; font-weight: 700; margin: 0.75rem 0 0.3rem; }
+label:first-child { margin-top: 0; }
+
+.conn { display: flex; align-items: center; gap: 0.45rem; margin: 0 0 0.7rem; font-weight: 700; }
+.dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #b7c4bc; display: inline-block; }
+.dot.on { background: #2f9e6b; }
+.dot.wait { background: #d89a14; }
+.dot.bad { background: #c4472d; }
+
+.id-card {
+  background: #fffaf2;
+  border: 2px solid #14352a;
+  border-radius: 1rem;
+  padding: 0.95rem 0.9rem 1rem;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+.id-label {
+  margin: 0;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  color: #5e6a62;
+  font-size: 0.95rem;
+}
+.big-id {
+  margin: 0.35rem 0 0.75rem;
+  font-size: 2.55rem;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+.id-card .primary { margin-top: 0; }
+.row { display: flex; gap: 0.45rem; align-items: center; }
+.row input { flex: 1; }
+.slim-inline {
+  width: auto;
+  min-height: 2.2rem;
+  padding: 0 0.8rem;
+  margin-top: 0;
+}
+
+.home-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6rem; }
+.home-head h2 { margin: 0; font-size: 1.25rem; }
+
+.list { display: flex; flex-direction: column; gap: 0.45rem; margin-top: 0.6rem; }
+.item {
+  text-align: left;
+  background: #fffaf2;
+  border: 1px solid #e3d8c4;
+  border-radius: 0.8rem;
+  padding: 0.65rem 0.75rem;
+}
+.item time { display: block; color: #5e6a62; font-size: 0.82rem; }
+.item p { margin: 0.2rem 0 0; font-size: 1.02rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.badge { display: inline-block; margin-top: 0.25rem; color: #9e3412; font-size: 0.82rem; font-weight: 700; }
+
+details { margin-top: 1rem; }
+summary { cursor: pointer; font-weight: 750; color: #14352a; }
+
+body.popup {
+  display: flex;
+  flex-direction: column;
+  background: #f6f1e6;
+  min-height: 100%;
+}
+.band { padding: 1rem 1.3rem 0.95rem; }
+.kicker { margin: 0; font-size: 0.95rem; color: #d5e6dc; }
+.band h1 { margin: 0.15rem 0 0; font-size: 2.05rem; font-weight: 750; letter-spacing: 0.01em; }
+.sheet {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 1.05rem 1.35rem 0.4rem;
+  overflow: auto;
+}
+.body {
+  margin: 0;
+  font-size: 2.15rem;
+  font-weight: 750;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.body.mid { font-size: 1.7rem; }
+.body.long { font-size: 1.3rem; }
+.photo {
+  flex: 1;
+  min-height: 12rem;
+  margin-top: 0.8rem;
+  background: #12201a;
+  border-radius: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.photo img { width: 100%; height: 100%; object-fit: contain; }
+.photo p { color: #f4efe4; margin: 0; font-size: 1.1rem; }
+.dock { padding: 0.75rem 1.35rem 1.1rem; }
+.dock button { min-height: 3.2rem; font-size: 1.2rem; }
+.quiet { margin: 0.45rem 0 0; text-align: center; }

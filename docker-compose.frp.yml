@@ -1,0 +1,19 @@
+services:
+  frpc:
+    image: ghcr.io/fatedier/frpc:v0.71.1@sha256:7a0a18bc9c83dc106a7e5213a890f521affdf90d595829c56b0ed8481377d50e
+    depends_on:
+      server:
+        condition: service_healthy
+    command: ["-c", "/etc/frp/frpc.toml"]
+    volumes:
+      - ./deploy/frp/frpc.toml:/etc/frp/frpc.toml:ro
+      - ./.secrets/frp-auth:/etc/frp-auth:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

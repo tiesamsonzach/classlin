@@ -1,0 +1,198 @@
+:root {
+  --ink: #1a2420;
+  --muted: #5e6a62;
+  --paper: #efe6d6;
+  --card: #fffaf2;
+  --line: #e3d8c4;
+  --pine: #14352a;
+  --pine-mid: #1f5340;
+  --cream: #f4efe4;
+  --ember: #c4491d;
+  color: var(--ink);
+  font-family: system-ui, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+button, input, textarea { font: inherit; color: inherit; }
+
+.hero {
+  background:
+    radial-gradient(1200px 220px at 10% -20%, rgba(226, 122, 74, 0.35), transparent 55%),
+    var(--pine);
+  color: var(--cream);
+}
+
+.wrap { max-width: 34rem; margin: 0 auto; }
+
+.hero-inner { padding: 1.35rem 1.2rem 2.8rem; }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  letter-spacing: 0.08em;
+  font-size: 0.92rem;
+  color: #d7e6dc;
+}
+
+.brand img { display: block; border-radius: 7px; }
+
+h1 {
+  margin: 0.35rem 0 0.2rem;
+  font-size: 2rem;
+  line-height: 1.2;
+  font-weight: 750;
+}
+
+.sub { margin: 0; color: #d5e4da; font-size: 1.05rem; }
+
+.main { padding: 0 0.9rem 2rem; margin-top: -1.7rem; }
+
+.card {
+  background: var(--card);
+  border-radius: 1.3rem;
+  padding: 1.15rem 1.05rem 1.2rem;
+  box-shadow: 0 18px 44px rgba(20, 40, 32, 0.12);
+}
+
+label {
+  display: block;
+  margin: 0.85rem 0 0.4rem;
+  font-weight: 700;
+  font-size: 1.02rem;
+}
+
+label:first-child { margin-top: 0.15rem; }
+
+input, textarea {
+  width: 100%;
+  border: 2px solid var(--line);
+  background: #fff;
+  border-radius: 0.95rem;
+  padding: 0.9rem 1rem;
+  font-size: 1.25rem;
+}
+
+textarea {
+  min-height: 8.5rem;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+input:focus, textarea:focus, button:focus-visible {
+  outline: 3px solid #e39a45;
+  outline-offset: 2px;
+}
+
+.hint { color: var(--muted); margin: 0.55rem 0 0; font-size: 0.98rem; }
+
+.status { min-height: 1.4em; margin: 0.65rem 0 0.2rem; font-weight: 700; color: var(--pine-mid); }
+.status.bad { color: #9d1c1c; }
+
+.primary, .secondary, .ghost {
+  width: 100%;
+  min-height: 4.4rem;
+  border-radius: 1rem;
+  border: 0;
+  font-size: 1.35rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.primary { background: var(--pine); color: white; margin-top: 0.85rem; }
+.primary:active { background: #0e261e; }
+.primary:disabled { background: #9aaba3; }
+
+.secondary {
+  background: #fff;
+  color: var(--pine);
+  border: 2px solid var(--pine);
+  margin-top: 0.7rem;
+}
+
+.ghost {
+  background: transparent;
+  color: var(--ember);
+  border: 2px dashed #e3b19f;
+  margin-top: 0.7rem;
+}
+
+.slim { min-height: 3.2rem; font-size: 1.1rem; margin-top: 0; }
+
+.texty {
+  width: 100%;
+  min-height: 3rem;
+  margin-top: 0.35rem;
+  border: 0;
+  background: transparent;
+  color: var(--pine-mid);
+  font-size: 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.photo-actions { display: flex; flex-direction: column; }
+
+#preview {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  margin-top: 0.8rem;
+  border-radius: 0.9rem;
+  background: #12201a;
+}
+
+.dock {
+  position: sticky;
+  bottom: 0;
+  padding-bottom: calc(0.4rem + env(safe-area-inset-bottom));
+  background: linear-gradient(to bottom, rgba(255, 250, 242, 0), var(--card) 22%);
+}
+
+.hist-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+
+.hist { list-style: none; margin: 0.4rem 0 0; padding: 0; }
+
+.item {
+  padding: 0.9rem 0.2rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.item time { color: var(--muted); font-size: 0.95rem; }
+
+.item p {
+  margin: 0.3rem 0 0;
+  font-size: 1.25rem;
+  font-weight: 650;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.item img {
+  display: block;
+  width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  margin-top: 0.55rem;
+  border-radius: 0.8rem;
+  background: #12201a;
+}
+
+@media (min-width: 800px) {
+  :root { font-size: 19px; }
+  .hero-inner { padding-left: 0.2rem; padding-right: 0.2rem; }
+}

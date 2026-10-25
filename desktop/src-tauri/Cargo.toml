@@ -1,0 +1,26 @@
+[package]
+name = "classroom-notify"
+version = "1.0.0"
+description = "Classroom tray app: native notifications and a large message window"
+authors = ["classroom-notify"]
+edition = "2021"
+rust-version = "1.77"
+publish = false
+
+[lib]
+name = "classroom_notify_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+classroom-notify-core = { path = "../core" }
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-single-instance = "2"
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }

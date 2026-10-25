@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>课堂通知</title>
+  <link rel="stylesheet" href="ui.css">
+  <script src="scale.js"></script>
+</head>
+<body class="main">
+  <header class="main-hero pine">
+    <p class="brand">课堂通知</p>
+    <h1 id="title">把这个编号发给手机</h1>
+  </header>
+  <main class="main-body">
+    <section class="id-card" aria-label="教室编号">
+      <p class="id-label">教室编号</p>
+      <p id="big-id" class="big-id">--------</p>
+      <button type="button" id="copy-id" class="primary">复制编号</button>
+      <p id="copy-note" class="hint">手机打开同一网址，填这一串就能发。</p>
+    </section>
+
+    <section id="setup">
+      <p class="hint">服务器地址只填一次。之后日常：看这块编号 → 手机照着填。</p>
+      <label for="s-url">服务器地址</label>
+      <input id="s-url" placeholder="https://notify.example.com" autocomplete="off" spellcheck="false">
+      <label for="s-token">口令（服务器没设就留空）</label>
+      <input id="s-token" maxlength="64" placeholder="和网页上相同，可不填" autocomplete="off" spellcheck="false">
+      <p id="setup-error" class="bad" role="status"></p>
+      <button type="button" id="save-setup" class="primary">保存并连接</button>
+      <p class="hint">关掉窗口后程序留在托盘。托盘图标上也能看到这个编号。</p>
+    </section>
+
+    <section id="home" hidden>
+      <p class="conn"><span id="dot" class="dot off"></span><span id="conn-text">未连接</span></p>
+      <div class="home-head">
+        <h2 id="home-channel">最近消息</h2>
+        <button type="button" id="refresh" class="secondary slim-inline">刷新</button>
+      </div>
+      <p id="list-status" class="hint" role="status"></p>
+      <p id="empty" class="hint" hidden>还没有消息。用手机打开服务器网页，输入上面的教室编号即可发送。</p>
+      <div id="list" class="list"></div>
+      <details id="settings">
+        <summary>设置</summary>
+        <label for="url">服务器地址</label>
+        <input id="url" autocomplete="off" spellcheck="false">
+        <label for="channel">教室编号</label>
+        <div class="row">
+          <input id="channel" maxlength="32" autocomplete="off" spellcheck="false">
+          <button type="button" id="regen" class="secondary slim-inline">换一个</button>
+        </div>
+        <label for="token">口令</label>
+        <input id="token" maxlength="64" autocomplete="off" spellcheck="false">
+        <p id="save-error" class="bad" role="status"></p>
+        <button type="button" id="save" class="primary">保存并重新连接</button>
+      </details>
+      <p class="hint">关掉这个窗口不会退出。新消息会弹出大窗口，并出现系统通知。</p>
+    </section>
+  </main>
+  <script src="main.js"></script>
+</body>
+</html>

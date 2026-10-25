@@ -1,0 +1,5 @@
+# 把 DOMAIN 设成已经解析到这台机器的域名。Caddy 会自动申请 Let's Encrypt 证书。
+{$DOMAIN} {
+	# 不要 gzip / 缓冲 /api/v1/stream，否则教室电脑会晚收到消息。
+	reverse_proxy server:8080
+}

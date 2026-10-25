@@ -1,0 +1,40 @@
+name: classroom-notify
+
+services:
+  server:
+    build: ./server
+    image: classroom-notify:local
+    restart: unless-stopped
+    environment:
+      TOKEN: ${TOKEN:-}
+      PORT: "8080"
+      DATA_DIR: /data
+      TZ: Asia/Shanghai
+    ports:
+      # HTTPS 时把 HTTP_BIND 设成 127.0.0.1，避免明文 8787 对公网开放。
+      - "${HTTP_BIND:-0.0.0.0}:${PORT:-8787}:8080"
+    volumes:
+      - notify-data:/data
+
+  # 公网 HTTPS：docker compose --profile https up -d
+  # 先把域名 A/AAAA 指到这台机器，并放行 80 和 443。
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    profiles: ["https"]
+    environment:
+      DOMAIN: ${DOMAIN:-notify.example.com}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - server
+
+volumes:
+  notify-data:
+  caddy-data:
+  caddy-config:

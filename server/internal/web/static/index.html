@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#14352a">
+  <title>课堂通知</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap hero-inner">
+      <p class="brand"><img src="favicon.svg" alt="" width="28" height="28">课堂通知</p>
+      <h1 id="hero-title">发给讲台电脑</h1>
+      <p id="hero-sub" class="sub">输入电脑上显示的教室编号</p>
+    </div>
+  </header>
+  <main class="wrap main">
+    <section id="setup" class="card">
+      <label for="channel">教室编号</label>
+      <input id="channel" maxlength="32" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="例如 7K3M-P9WQ" enterkeyhint="go">
+      <div id="token-block" hidden>
+        <label for="token" id="token-label">口令</label>
+        <input id="token" maxlength="64" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="和电脑上填的一样" enterkeyhint="go">
+      </div>
+      <button type="button" id="show-token" class="texty">有口令？点这里填写</button>
+      <p id="token-help" class="hint">当前只用教室编号配对。</p>
+      <p id="setup-error" class="status bad" role="status"></p>
+      <button type="button" id="enter" class="primary">进入教室</button>
+    </section>
+
+    <section id="compose" class="card" hidden>
+      <label for="text">内容</label>
+      <textarea id="text" maxlength="2000" placeholder="写一句话，比如：请翻开第 12 页"></textarea>
+      <div class="photo-actions">
+        <button type="button" id="pick" class="secondary">添加照片</button>
+        <button type="button" id="clear-photo" class="ghost" hidden>移除照片</button>
+      </div>
+      <input id="file" type="file" accept="image/*" hidden>
+      <img id="preview" alt="待发送的照片" hidden>
+      <p class="hint">写一句话，或加一张照片。发送后讲台电脑会弹出来。</p>
+      <p id="send-status" class="status" role="status" aria-live="polite"></p>
+      <div class="dock">
+        <button type="button" id="send" class="primary">发送</button>
+        <button type="button" id="to-history" class="texty">历史消息</button>
+        <button type="button" id="change" class="texty">更换教室编号</button>
+      </div>
+    </section>
+
+    <section id="history" class="card" hidden>
+      <div class="hist-bar">
+        <button type="button" id="back" class="secondary slim">返回</button>
+        <button type="button" id="reload" class="secondary slim">刷新</button>
+      </div>
+      <p id="hist-status" class="status" role="status"></p>
+      <p id="empty" class="hint" hidden>这个教室还没有消息</p>
+      <ul id="list" class="hist"></ul>
+      <button type="button" id="more" class="secondary" hidden>更早的消息</button>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

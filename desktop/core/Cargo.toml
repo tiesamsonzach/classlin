@@ -1,0 +1,12 @@
+[package]
+name = "classroom-notify-core"
+version = "1.0.0"
+edition = "2021"
+publish = false
+description = "Channel client, SSE parser, and 4K window sizing for classroom-notify"
+
+[dependencies]
+getrandom = "0.2"
+reqwest = { version = "0.12", default-features = false, features = ["stream", "json", "charset", "rustls-tls-native-roots"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

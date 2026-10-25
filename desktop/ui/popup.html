@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>课堂通知</title>
+  <link rel="stylesheet" href="ui.css">
+  <script src="scale.js"></script>
+</head>
+<body class="popup">
+  <header class="band pine">
+    <p id="kicker" class="kicker">课堂通知</p>
+    <h1 id="title">教室</h1>
+  </header>
+  <section class="sheet">
+    <p id="body" class="body"></p>
+    <div id="photo" class="photo" hidden>
+      <img id="img" alt="照片">
+      <p id="photo-note" hidden></p>
+    </div>
+  </section>
+  <div class="dock">
+    <button type="button" id="ok" class="primary">知道了</button>
+    <p class="quiet hint">看完点「知道了」。程序仍留在托盘里。</p>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

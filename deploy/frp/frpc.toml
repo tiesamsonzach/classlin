@@ -1,0 +1,26 @@
+serverAddr = "118.190.207.149"
+serverPort = 17000
+loginFailExit = false
+user = "classroom-notify-macmini"
+
+auth.method = "token"
+auth.tokenSource.type = "file"
+auth.tokenSource.file.path = "/etc/frp-auth/token"
+auth.additionalScopes = ["HeartBeats", "NewWorkConns"]
+
+transport.tls.enable = true
+transport.tls.certFile = "/etc/frp-auth/client.crt"
+transport.tls.keyFile = "/etc/frp-auth/client.key"
+transport.tls.trustedCaFile = "/etc/frp-auth/ca.crt"
+transport.tls.serverName = "118.190.207.149"
+
+log.to = "console"
+log.level = "info"
+log.disablePrintColor = true
+
+[[proxies]]
+name = "classroom-notify-web"
+type = "tcp"
+localIP = "server"
+localPort = 8080
+remotePort = 18882

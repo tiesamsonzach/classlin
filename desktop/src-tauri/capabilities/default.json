@@ -1,0 +1,19 @@
+{
+  "identifier": "default",
+  "description": "Classroom notify windows",
+  "windows": ["main", "popup"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "notification:default",
+    "allow-load-config",
+    "allow-save-config",
+    "allow-latest-message",
+    "allow-list-history",
+    "allow-open-message",
+    "allow-dismiss-popup",
+    "allow-connection-status",
+    "allow-screen-metrics",
+    "allow-generate-classroom-id"
+  ]
+}
