@@ -1,0 +1,53 @@
+name: Windows desktop release
+on:
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: 先建成草稿 Release（推荐，核对后再在网页点 Publish）
+        type: boolean
+        default: true
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install frontend deps
+        run: npm ci
+      - name: Build and upload to GitHub Release
+        uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: desktop
+          args: --bundles nsis
+          # 推送的标签名优先；手动跑时用 tauri.conf.json 的 version
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v__VERSION__' }}
+          releaseName: 课堂通知 v__VERSION__
+          releaseBody: |
+            Windows 教室电脑安装包（NSIS）。
+
+            1. 下载 `课堂通知_*_x64-setup.exe`
+            2. 拷到教室电脑，双击安装
+            3. 打开后填写服务器地址（若打包时已写入则预填），把大号教室编号发给手机
+
+            教室电脑不需要安装 Rust 或 Node。若 Windows 提示「未知发布者」，选仍要运行。
+          # 打标签推送：直接正式发布；手动 Run：默认草稿
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft }}
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

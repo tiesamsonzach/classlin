@@ -98,9 +98,9 @@ Caddy 会向 Let's Encrypt 申请证书。手机和电脑都改用 `https://noti
 
 ## 教室电脑：老师怎么装
 
-教室电脑**不需要**安装 Rust 或 Node。老师只要拿到已经打好的 Windows 安装包：
+教室电脑**不需要**安装 Rust 或 Node。老师从仓库 **Releases** 下载已经打好的 Windows 安装包即可：
 
-1. 把 `课堂通知_1.0.0_x64-setup.exe`（或 `.msi`）拷到教室电脑。
+1. 把 `课堂通知_*_x64-setup.exe`（或 `.msi`）拷到教室电脑。
 2. 双击安装。若 Windows 提示「未知发布者」，选仍要运行。Windows 11 一般已有 WebView2；Win10 若提示缺少组件，按安装包引导下载即可。
 3. 打开后立刻看到大号教室编号，例如 `7K3M-P9WQ`，以及「把这个编号发给手机」。
 4. 第一次再填一次服务器地址（`https://你的域名` 或 `http://公网IP:8787`）。打包的人如果已经写入默认地址，这里是预填好的，点「保存并连接」即可。
@@ -110,10 +110,31 @@ Caddy 会向 Let's Encrypt 申请证书。手机和电脑都改用 `https://noti
 
 ### 谁来打 Windows 安装包
 
-必须在一台 **Windows** 电脑上打包。Linux / 云端编不出能双击的 exe。教室电脑本身不用参与编译。
+老师从仓库的 **Releases** 页下载 `课堂通知_*_x64-setup.exe` 即可，不必自己编译。发布人任选其一：
+
+**方式 A：打标签自动发布（推荐）**
+
+1. 把 `desktop/src-tauri/tauri.conf.json`（以及 `desktop/package.json`）里的 `version` 改成新版本，例如 `1.0.1`。
+2. 若全校共用同一服务器，打开 `desktop/src-tauri/defaults.json`，把 `serverUrl` 写成学校的地址，例如 `"https://notify.example.com"`。
+3. 提交后打标签并推送（标签名建议与版本一致）：
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+4. Actions 工作流 `Windows desktop release` 会编译并把安装包挂到该版本的 Release。把下载链接发给老师。
+
+**方式 B：网页上手动跑一次**
+
+仓库 → Actions → Windows desktop release → Run workflow（默认建成草稿）→ 到 Releases 核对后点 Publish。
+
+**方式 C：本机 Windows 打包**
+
+必须在一台 **Windows** 电脑上。Linux / 云端编不出能双击的 exe。教室电脑本身不用参与编译。
 
 1. 安装 [Rust](https://rustup.rs)、[Node.js](https://nodejs.org/)（LTS），以及 [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)（Win11 通常已有）。
-2. 若全校共用同一服务器，打开 `desktop/src-tauri/defaults.json`，把 `serverUrl` 写成学校的地址，例如 `"https://notify.example.com"`。这样老师打开软件时地址是预填的。
+2. 需要预填服务器时，同样改 `desktop/src-tauri/defaults.json`。
 3. 在仓库里执行：
 
 ```bash
@@ -128,6 +149,8 @@ npm run build
 5. 把 exe 发给老师。不要让老师在教室电脑上跑 `npm` 或 `cargo`。
 
 开发调试（仅打包用的那台机器）：`cd desktop && npm run dev`。
+
+推送到 `main` 且改动了 `desktop/` 时，工作流 `Windows desktop` 仍会编译并上传 **Artifact**（供自测），不会每次自动开新 Release。
 
 ### macOS
 
