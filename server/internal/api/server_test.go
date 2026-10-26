@@ -400,3 +400,33 @@ func TestHealth(t *testing.T) {
 		t.Fatal(string(body))
 	}
 }
+
+func TestPostSignal(t *testing.T) {
+	s, ts := start(t, "")
+	sub, cancel := s.Hub.Subscribe("301")
+	defer cancel()
+
+	body := `{"channel":"301","kind":"offer","from":"phone","callId":"c1","sdp":"v=0"}`
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/signal", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusAccepted {
+		t.Fatalf("%d %s", res.StatusCode, raw)
+	}
+	select {
+	case pkt := <-sub:
+		if pkt.Event != "signal" || !bytes.Contains(pkt.Data, []byte(`"kind":"offer"`)) {
+			t.Fatalf("%s %s", pkt.Event, pkt.Data)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for signal")
+	}
+}

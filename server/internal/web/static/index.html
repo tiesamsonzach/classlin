@@ -43,8 +43,22 @@
       <p id="send-status" class="status" role="status" aria-live="polite"></p>
       <div class="dock">
         <button type="button" id="send" class="primary">发送</button>
+        <button type="button" id="start-call" class="secondary">视频对讲</button>
         <button type="button" id="to-history" class="texty">历史消息</button>
         <button type="button" id="change" class="texty">更换教室编号</button>
+      </div>
+    </section>
+
+    <section id="call" class="card" hidden>
+      <p class="hint">与讲台电脑视频对讲。请允许摄像头和麦克风。部分校园网可能需要 TURN 才能连通。</p>
+      <div class="videos">
+        <video id="local-video" playsinline autoplay muted></video>
+        <video id="remote-video" playsinline autoplay></video>
+      </div>
+      <p id="call-status" class="status" role="status">准备中…</p>
+      <div class="dock">
+        <button type="button" id="accept-call" class="primary" hidden>接听</button>
+        <button type="button" id="hangup" class="secondary">挂断 / 返回</button>
       </div>
     </section>
 

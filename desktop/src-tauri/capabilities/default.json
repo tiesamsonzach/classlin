@@ -14,6 +14,9 @@
     "allow-dismiss-popup",
     "allow-connection-status",
     "allow-screen-metrics",
-    "allow-generate-classroom-id"
+    "allow-generate-classroom-id",
+    "allow-send-text",
+    "allow-send-image",
+    "allow-send-signal"
   ]
 }

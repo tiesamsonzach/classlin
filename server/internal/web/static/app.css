@@ -196,3 +196,17 @@ input:focus, textarea:focus, button:focus-visible {
   :root { font-size: 19px; }
   .hero-inner { padding-left: 0.2rem; padding-right: 0.2rem; }
 }
+
+.videos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+.videos video {
+  width: 100%;
+  min-height: 9rem;
+  background: #12201a;
+  border-radius: 0.75rem;
+  object-fit: cover;
+}

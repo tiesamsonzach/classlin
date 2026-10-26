@@ -84,6 +84,10 @@ async fn run_session(app: &AppHandle, cfg: crate::state::Config) -> Result<bool,
                 if let Ok(msg) = serde_json::from_str::<RemoteMessage>(&ev.data) {
                     deliver(app.clone(), client.clone(), msg, true);
                 }
+            } else if ev.event == "signal" {
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&ev.data) {
+                    let _ = app.emit("signal", value);
+                }
             }
         }
     }
@@ -106,12 +110,18 @@ async fn catch_up(app: &AppHandle, client: &Client) -> Result<(), String> {
 }
 
 pub fn deliver(app: AppHandle, client: Client, msg: RemoteMessage, notify: bool) {
+    let suppressed = take_suppressed(&app, &msg.id);
     let fresh = newly_seen(&app, &msg.id);
-    if notify && !fresh {
+    if notify && !fresh && !suppressed {
         return;
     }
     if fresh {
         remember(&app, msg.created_ms);
+    }
+    if suppressed {
+        let view = MessageView::from_remote(&msg);
+        let _ = app.emit("message", &view);
+        return;
     }
     if notify {
         let title = format!("教室 {}", msg.channel);
@@ -187,6 +197,13 @@ pub fn set_status(app: &AppHandle, text: &str, kind: &str) {
         "status",
         serde_json::json!({ "text": text, "kind": kind }),
     );
+}
+
+
+fn take_suppressed(app: &AppHandle, id: &str) -> bool {
+    let state = app.state::<AppState>();
+    let mut set = state.suppressed.lock().expect("suppressed");
+    set.remove(id)
 }
 
 fn newly_seen(app: &AppHandle, id: &str) -> bool {

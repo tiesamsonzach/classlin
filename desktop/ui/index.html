@@ -33,6 +33,41 @@
 
     <section id="home" hidden>
       <p class="conn"><span id="dot" class="dot off"></span><span id="conn-text">未连接</span></p>
+
+      <section class="compose-card" aria-label="发送到本教室">
+        <h2>发送文字 / 图片</h2>
+        <label for="compose-text">内容</label>
+        <textarea id="compose-text" maxlength="2000" rows="3" placeholder="写一句话，发给本教室频道（手机历史也能看到）"></textarea>
+        <div class="compose-actions">
+          <button type="button" id="compose-pick" class="secondary slim-inline">添加照片</button>
+          <button type="button" id="compose-clear" class="secondary slim-inline" hidden>移除照片</button>
+          <button type="button" id="compose-send" class="primary slim-inline">发送</button>
+        </div>
+        <input id="compose-file" type="file" accept="image/*" hidden>
+        <img id="compose-preview" class="compose-preview" alt="待发送照片" hidden>
+        <p id="compose-status" class="hint" role="status"></p>
+      </section>
+
+      <section class="call-card" aria-label="视频对讲">
+        <div class="home-head">
+          <h2>视频对讲</h2>
+          <button type="button" id="call-toggle" class="secondary slim-inline">打开面板</button>
+        </div>
+        <div id="call-panel" hidden>
+          <p class="hint">手机打开同一教室网页后，可点「开始对讲」。需摄像头与麦克风权限。目前仅用公共 STUN，部分网络可能连不上（需自建 TURN）。</p>
+          <div class="videos">
+            <video id="local-video" playsinline autoplay muted></video>
+            <video id="remote-video" playsinline autoplay></video>
+          </div>
+          <p id="call-status" class="hint" role="status">空闲</p>
+          <div class="compose-actions">
+            <button type="button" id="call-start" class="primary slim-inline">开始对讲</button>
+            <button type="button" id="call-accept" class="primary slim-inline" hidden>接听</button>
+            <button type="button" id="call-hangup" class="secondary slim-inline">挂断</button>
+          </div>
+        </div>
+      </section>
+
       <div class="home-head">
         <h2 id="home-channel">最近消息</h2>
         <button type="button" id="refresh" class="secondary slim-inline">刷新</button>
