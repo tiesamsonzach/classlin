@@ -163,3 +163,54 @@ body.popup {
 .dock { padding: 0.75rem 1.35rem 1.1rem; }
 .dock button { min-height: 3.2rem; font-size: 1.2rem; }
 .quiet { margin: 0.45rem 0 0; text-align: center; }
+
+.compose-card, .call-card {
+  background: #fffaf2;
+  border: 1px solid #e3d8c4;
+  border-radius: 0.9rem;
+  padding: 0.85rem 0.85rem 0.95rem;
+  margin-bottom: 0.9rem;
+}
+.compose-card h2, .call-card h2 {
+  margin: 0 0 0.45rem;
+  font-size: 1.15rem;
+}
+textarea {
+  width: 100%;
+  border: 2px solid #e3d8c4;
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 0.7rem 0.8rem;
+  font: inherit;
+  resize: vertical;
+  min-height: 4.5rem;
+}
+.compose-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+}
+.compose-actions .slim-inline { width: auto; }
+.compose-preview {
+  display: block;
+  margin-top: 0.55rem;
+  max-width: 100%;
+  max-height: 12rem;
+  border-radius: 0.7rem;
+  object-fit: contain;
+  background: #12201a;
+}
+.videos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+  margin: 0.55rem 0;
+}
+.videos video {
+  width: 100%;
+  min-height: 7rem;
+  background: #12201a;
+  border-radius: 0.7rem;
+  object-fit: cover;
+}

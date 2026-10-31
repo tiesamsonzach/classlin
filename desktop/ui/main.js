@@ -149,6 +149,255 @@
     }
   }
 
+
+  var composeFile = null;
+  var composePreviewURL = "";
+  var pc = null;
+  var localStream = null;
+  var callId = "";
+  var callRole = "";
+  var pendingOffer = null;
+  var iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
+
+  function setComposeStatus(text, bad) {
+    $("compose-status").textContent = text || "";
+    $("compose-status").className = bad ? "bad" : "hint";
+  }
+
+  function clearComposePhoto() {
+    composeFile = null;
+    if (composePreviewURL) URL.revokeObjectURL(composePreviewURL);
+    composePreviewURL = "";
+    $("compose-file").value = "";
+    $("compose-preview").hidden = true;
+    $("compose-preview").removeAttribute("src");
+    $("compose-clear").hidden = true;
+    $("compose-pick").textContent = "添加照片";
+  }
+
+  function fileToBase64(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(String(reader.result || "")); };
+      reader.onerror = function () { reject(new Error("读取照片失败")); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function composeSend() {
+    var body = $("compose-text").value.trim();
+    if (!body && !composeFile) {
+      setComposeStatus("先写一句话，或添加一张照片", true);
+      return;
+    }
+    if (!tauri) {
+      setComposeStatus("请在教室电脑程序里发送", true);
+      return;
+    }
+    $("compose-send").disabled = true;
+    setComposeStatus("发送中…", false);
+    try {
+      if (composeFile) {
+        var dataUrl = await fileToBase64(composeFile);
+        await tauri.core.invoke("send_image", {
+          input: {
+            body: body,
+            dataBase64: dataUrl,
+            fileName: composeFile.name || "photo.jpg",
+            mime: composeFile.type || "image/jpeg"
+          }
+        });
+      } else {
+        await tauri.core.invoke("send_text", { input: { body: body } });
+      }
+      $("compose-text").value = "";
+      clearComposePhoto();
+      setComposeStatus("已发送", false);
+      refresh();
+    } catch (err) {
+      setComposeStatus(String(err), true);
+    } finally {
+      $("compose-send").disabled = false;
+    }
+  }
+
+  function setCallStatus(text) {
+    $("call-status").textContent = text || "";
+  }
+
+  async function ensureLocalMedia() {
+    if (localStream) return localStream;
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    $("local-video").srcObject = localStream;
+    return localStream;
+  }
+
+  function stopLocalMedia() {
+    if (localStream) {
+      localStream.getTracks().forEach(function (t) { t.stop(); });
+      localStream = null;
+    }
+    $("local-video").srcObject = null;
+    $("remote-video").srcObject = null;
+  }
+
+  function closePeer() {
+    if (pc) {
+      try { pc.close(); } catch (e) {}
+      pc = null;
+    }
+  }
+
+  async function hangup(sendSignal) {
+    var id = callId;
+    closePeer();
+    stopLocalMedia();
+    pendingOffer = null;
+    callRole = "";
+    callId = "";
+    $("call-accept").hidden = true;
+    setCallStatus("已挂断");
+    if (sendSignal && id && tauri) {
+      try {
+        await tauri.core.invoke("send_signal", {
+          input: { kind: "hangup", callId: id, sdp: null, candidate: null }
+        });
+      } catch (e) {}
+    }
+  }
+
+  function newCallId() {
+    return "c-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  }
+
+  async function createPeer() {
+    closePeer();
+    pc = new RTCPeerConnection({ iceServers: iceServers });
+    pc.ontrack = function (ev) {
+      $("remote-video").srcObject = ev.streams[0] || (ev.track && new MediaStream([ev.track]));
+    };
+    pc.onicecandidate = function (ev) {
+      if (!ev.candidate || !callId || !tauri) return;
+      tauri.core.invoke("send_signal", {
+        input: {
+          kind: "ice",
+          callId: callId,
+          sdp: null,
+          candidate: JSON.stringify(ev.candidate)
+        }
+      }).catch(function () {});
+    };
+    pc.onconnectionstatechange = function () {
+      if (!pc) return;
+      setCallStatus("连接状态：" + pc.connectionState);
+      if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+        setCallStatus("对讲连接中断");
+      }
+    };
+    var stream = await ensureLocalMedia();
+    stream.getTracks().forEach(function (track) { pc.addTrack(track, stream); });
+    return pc;
+  }
+
+  async function startCall() {
+    if (!tauri) {
+      setCallStatus("请在教室电脑程序里对讲");
+      return;
+    }
+    try {
+      callId = newCallId();
+      callRole = "caller";
+      $("call-accept").hidden = true;
+      setCallStatus("正在呼叫手机…");
+      await createPeer();
+      var offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await tauri.core.invoke("send_signal", {
+        input: { kind: "offer", callId: callId, sdp: offer.sdp, candidate: null }
+      });
+      setCallStatus("已发起对讲，等待手机接听");
+    } catch (err) {
+      setCallStatus(String(err));
+      hangup(false);
+    }
+  }
+
+  async function acceptCall() {
+    if (!pendingOffer || !tauri) return;
+    try {
+      callId = pendingOffer.callId;
+      callRole = "callee";
+      $("call-accept").hidden = true;
+      setCallStatus("正在接听…");
+      await createPeer();
+      await pc.setRemoteDescription({ type: "offer", sdp: pendingOffer.sdp });
+      var answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await tauri.core.invoke("send_signal", {
+        input: { kind: "answer", callId: callId, sdp: answer.sdp, candidate: null }
+      });
+      pendingOffer = null;
+      setCallStatus("对讲中");
+    } catch (err) {
+      setCallStatus(String(err));
+      hangup(true);
+    }
+  }
+
+  async function onSignal(sig) {
+    if (!sig || !sig.kind) return;
+    if (sig.from === "desktop") return;
+    if (sig.kind === "hangup") {
+      if (!callId || sig.callId === callId) {
+        hangup(false);
+        setCallStatus("对方已挂断");
+      }
+      return;
+    }
+    if (sig.kind === "offer" && sig.sdp) {
+      pendingOffer = { callId: sig.callId, sdp: sig.sdp };
+      $("call-panel").hidden = false;
+      $("call-accept").hidden = false;
+      setCallStatus("手机来电，请点接听");
+      return;
+    }
+    if (sig.kind === "answer" && sig.sdp && pc && callRole === "caller" && sig.callId === callId) {
+      await pc.setRemoteDescription({ type: "answer", sdp: sig.sdp });
+      setCallStatus("对讲中");
+      return;
+    }
+    if (sig.kind === "ice" && sig.candidate && pc && sig.callId === callId) {
+      try {
+        var cand = JSON.parse(sig.candidate);
+        await pc.addIceCandidate(cand);
+      } catch (e) {}
+    }
+  }
+
+  $("compose-pick").addEventListener("click", function () { $("compose-file").click(); });
+  $("compose-clear").addEventListener("click", clearComposePhoto);
+  $("compose-file").addEventListener("change", function () {
+    var picked = $("compose-file").files && $("compose-file").files[0];
+    if (!picked) return;
+    if (composePreviewURL) URL.revokeObjectURL(composePreviewURL);
+    composeFile = picked;
+    composePreviewURL = URL.createObjectURL(picked);
+    $("compose-preview").src = composePreviewURL;
+    $("compose-preview").hidden = false;
+    $("compose-clear").hidden = false;
+    $("compose-pick").textContent = "更换照片";
+    setComposeStatus("", false);
+  });
+  $("compose-send").addEventListener("click", composeSend);
+  $("call-toggle").addEventListener("click", function () {
+    $("call-panel").hidden = !$("call-panel").hidden;
+    $("call-toggle").textContent = $("call-panel").hidden ? "打开面板" : "收起面板";
+  });
+  $("call-start").addEventListener("click", startCall);
+  $("call-accept").addEventListener("click", acceptCall);
+  $("call-hangup").addEventListener("click", function () { hangup(true); });
+
+
   $("save-setup").addEventListener("click", function () { save(false); });
   $("save").addEventListener("click", function () { save(true); });
   $("refresh").addEventListener("click", refresh);
@@ -192,6 +441,9 @@
   });
   tauri.event.listen("message", function (event) {
     upsert(event.payload);
+  });
+  tauri.event.listen("signal", function (event) {
+    onSignal(event.payload || {});
   });
   tauri.core.invoke("screen_metrics").then(function (m) {
     if (window.__applyUiScale) window.__applyUiScale(m.logicalWidth);

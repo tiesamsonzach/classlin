@@ -53,6 +53,11 @@ struct ListResp {
     next_before: Option<i64>,
 }
 
+#[derive(Deserialize)]
+struct MessageResp {
+    message: RemoteMessage,
+}
+
 impl Client {
     pub fn new(base: &str, channel: &str, token: &str) -> Result<Self, String> {
         let http = reqwest::Client::builder()
@@ -178,6 +183,128 @@ impl Client {
         Ok(())
     }
 
+
+    pub async fn post_text(&self, body: &str) -> Result<RemoteMessage, String> {
+        let payload = serde_json::json!({
+            "channel": self.channel,
+            "token": self.token,
+            "body": body,
+        });
+        let res = self
+            .authed(
+                self.http
+                    .post(self.url("/api/v1/messages"))
+                    .timeout(Duration::from_secs(30))
+                    .header("Content-Type", "application/json")
+                    .json(&payload),
+            )
+            .send()
+            .await
+            .map_err(net_err)?;
+        let res = read_ok(res).await?;
+        let wrapped: MessageResp = res.json().await.map_err(|_| "发送结果无法识别".to_string())?;
+        Ok(wrapped.message)
+    }
+
+    pub async fn post_image(
+        &self,
+        body: &str,
+        bytes: Vec<u8>,
+        filename: &str,
+        mime: &str,
+    ) -> Result<RemoteMessage, String> {
+        if bytes.is_empty() {
+            return Err("请选择照片".into());
+        }
+        if bytes.len() > 12 * 1024 * 1024 {
+            return Err("照片太大，最大 12MB".into());
+        }
+        let boundary = format!("----cn{}", now_nonce());
+        let mime = if mime.is_empty() {
+            "application/octet-stream"
+        } else {
+            mime
+        };
+        let safe_name = filename.replace('"', "_");
+        let mut form = Vec::new();
+        for (name, value) in [
+            ("channel", self.channel.as_str()),
+            ("token", self.token.as_str()),
+            ("body", body),
+        ] {
+            form.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+            form.extend_from_slice(
+                format!("Content-Disposition: form-data; name=\"{name}\"\r\n\r\n").as_bytes(),
+            );
+            form.extend_from_slice(value.as_bytes());
+            form.extend_from_slice(b"\r\n");
+        }
+        form.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+        form.extend_from_slice(
+            format!(
+                "Content-Disposition: form-data; name=\"image\"; filename=\"{safe_name}\"\r\nContent-Type: {mime}\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+        form.extend_from_slice(&bytes);
+        form.extend_from_slice(b"\r\n");
+        form.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+
+        let res = self
+            .authed(
+                self.http
+                    .post(self.url("/api/v1/messages"))
+                    .timeout(Duration::from_secs(60))
+                    .header(
+                        "Content-Type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(form),
+            )
+            .send()
+            .await
+            .map_err(net_err)?;
+        let res = read_ok(res).await?;
+        let wrapped: MessageResp = res.json().await.map_err(|_| "发送结果无法识别".to_string())?;
+        Ok(wrapped.message)
+    }
+
+    pub async fn post_signal(
+        &self,
+        kind: &str,
+        from: &str,
+        call_id: &str,
+        sdp: Option<&str>,
+        candidate: Option<&str>,
+    ) -> Result<(), String> {
+        let mut payload = serde_json::json!({
+            "channel": self.channel,
+            "token": self.token,
+            "kind": kind,
+            "from": from,
+            "callId": call_id,
+        });
+        if let Some(sdp) = sdp.filter(|s| !s.is_empty()) {
+            payload["sdp"] = serde_json::Value::String(sdp.to_string());
+        }
+        if let Some(candidate) = candidate.filter(|s| !s.is_empty()) {
+            payload["candidate"] = serde_json::Value::String(candidate.to_string());
+        }
+        let res = self
+            .authed(
+                self.http
+                    .post(self.url("/api/v1/signal"))
+                    .timeout(Duration::from_secs(20))
+                    .header("Content-Type", "application/json")
+                    .json(&payload),
+            )
+            .send()
+            .await
+            .map_err(net_err)?;
+        let _ = read_ok(res).await?;
+        Ok(())
+    }
+
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.base.trim_end_matches('/'), path)
     }
@@ -215,6 +342,14 @@ async fn read_ok(res: reqwest::Response) -> Result<reqwest::Response, String> {
         404 => "找不到内容".into(),
         _ => format!("服务器返回 {}", status.as_u16()),
     })
+}
+
+fn now_nonce() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0)
 }
 
 fn net_err(err: reqwest::Error) -> String {

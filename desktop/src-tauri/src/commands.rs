@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use tauri::{AppHandle, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 use classroom_notify_core::Client;
 
@@ -134,4 +134,112 @@ pub fn screen_metrics(window: WebviewWindow) -> serde_json::Value {
             "uiScale": 1.0,
         })
     }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendTextInput {
+    pub body: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendImageInput {
+    pub body: String,
+    pub data_base64: String,
+    pub file_name: String,
+    pub mime: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendSignalInput {
+    pub kind: String,
+    pub call_id: String,
+    pub sdp: Option<String>,
+    pub candidate: Option<String>,
+}
+
+fn remember_suppressed(app: &AppHandle, id: &str) {
+    let state = app.state::<AppState>();
+    let mut set = state.suppressed.lock().expect("suppressed");
+    set.insert(id.to_string());
+    if set.len() > 100 {
+        // drop arbitrary extras by rebuilding from seen order roughly
+        let keep: Vec<String> = set.iter().take(50).cloned().collect();
+        set.clear();
+        set.extend(keep);
+    }
+}
+
+#[tauri::command]
+pub async fn send_text(app: AppHandle, input: SendTextInput) -> Result<HistoryItem, String> {
+    let body = input.body.trim().to_string();
+    if body.is_empty() {
+        return Err("请填写文字".into());
+    }
+    let cfg = app.state::<AppState>().config.lock().expect("config").clone();
+    if !cfg.is_complete() {
+        return Err("请先填写服务器和教室编号".into());
+    }
+    let client = Client::new(&cfg.server_url, &cfg.channel, &cfg.token)?;
+    let msg = client.post_text(&body).await?;
+    remember_suppressed(&app, &msg.id);
+    let item = HistoryItem::from(&msg);
+    let _ = app.emit("message", MessageView::from_remote(&msg));
+    Ok(item)
+}
+
+#[tauri::command]
+pub async fn send_image(app: AppHandle, input: SendImageInput) -> Result<HistoryItem, String> {
+    let cfg = app.state::<AppState>().config.lock().expect("config").clone();
+    if !cfg.is_complete() {
+        return Err("请先填写服务器和教室编号".into());
+    }
+    let raw = input.data_base64.trim();
+    let b64 = raw
+        .split(',')
+        .last()
+        .unwrap_or(raw)
+        .trim();
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|_| "照片数据无法识别".to_string())?;
+    let file_name = if input.file_name.trim().is_empty() {
+        "photo.jpg".into()
+    } else {
+        input.file_name.trim().to_string()
+    };
+    let client = Client::new(&cfg.server_url, &cfg.channel, &cfg.token)?;
+    let msg = client
+        .post_image(input.body.trim(), bytes, &file_name, input.mime.trim())
+        .await?;
+    remember_suppressed(&app, &msg.id);
+    let item = HistoryItem::from(&msg);
+    let _ = app.emit("message", MessageView::from_remote(&msg));
+    Ok(item)
+}
+
+#[tauri::command]
+pub async fn send_signal(app: AppHandle, input: SendSignalInput) -> Result<(), String> {
+    let cfg = app.state::<AppState>().config.lock().expect("config").clone();
+    if !cfg.is_complete() {
+        return Err("请先填写服务器和教室编号".into());
+    }
+    let kind = input.kind.trim();
+    let call_id = input.call_id.trim();
+    if kind.is_empty() || call_id.is_empty() {
+        return Err("信令参数不完整".into());
+    }
+    let client = Client::new(&cfg.server_url, &cfg.channel, &cfg.token)?;
+    client
+        .post_signal(
+            kind,
+            "desktop",
+            call_id,
+            input.sdp.as_deref(),
+            input.candidate.as_deref(),
+        )
+        .await
 }

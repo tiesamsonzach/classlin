@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -114,6 +114,7 @@ pub struct AppState {
     pub status_kind: Mutex<String>,
     pub generation: watch::Sender<u64>,
     pub seen: Mutex<VecDeque<String>>,
+    pub suppressed: Mutex<HashSet<String>>,
     pub status_item: Mutex<Option<MenuItem<Wry>>>,
     pub channel_item: Mutex<Option<MenuItem<Wry>>>,
     pub autostart_item: Mutex<Option<CheckMenuItem<Wry>>>,

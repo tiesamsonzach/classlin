@@ -12,16 +12,21 @@
   function channel() { return localStorage.getItem("cn.channel") || ""; }
   function token() { return localStorage.getItem("cn.token") || ""; }
 
+  var call = $("call");
   function show(name) {
     setup.hidden = name !== "setup";
     compose.hidden = name !== "compose";
     history.hidden = name !== "history";
+    call.hidden = name !== "call";
     if (name === "setup") {
       $("hero-title").textContent = "发给讲台电脑";
       $("hero-sub").textContent = "输入电脑上显示的教室编号";
     } else if (name === "compose") {
       $("hero-title").textContent = "教室 " + channel();
       $("hero-sub").textContent = "写一句话，或发一张照片";
+    } else if (name === "call") {
+      $("hero-title").textContent = "视频对讲";
+      $("hero-sub").textContent = "教室 " + channel();
     } else {
       $("hero-title").textContent = "历史消息";
       $("hero-sub").textContent = "教室 " + channel();
@@ -83,6 +88,7 @@
       localStorage.setItem("cn.channel", data.channel || ch);
       localStorage.setItem("cn.token", tk);
       show("compose");
+      openSignalStream();
     } catch (err) {
       $("setup-error").textContent = err.message || "进入失败";
     } finally {
@@ -271,6 +277,179 @@
     show("setup");
   });
 
+
+  var pc = null;
+  var localStream = null;
+  var callId = "";
+  var callRole = "";
+  var pendingOffer = null;
+  var es = null;
+  var iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
+
+  function setCallStatus(t, bad) {
+    var el = $("call-status");
+    el.textContent = t || "";
+    el.classList.toggle("bad", !!bad);
+  }
+
+  function stopMedia() {
+    if (localStream) {
+      localStream.getTracks().forEach(function (t) { t.stop(); });
+      localStream = null;
+    }
+    $("local-video").srcObject = null;
+    $("remote-video").srcObject = null;
+  }
+
+  function closePeer() {
+    if (pc) { try { pc.close(); } catch (e) {} pc = null; }
+  }
+
+  async function ensureMedia() {
+    if (localStream) return localStream;
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    $("local-video").srcObject = localStream;
+    return localStream;
+  }
+
+  function newCallId() {
+    return "c-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  }
+
+  async function postSignal(kind, id, sdp, candidate) {
+    var res = await fetch("/api/v1/signal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        channel: channel(),
+        token: token(),
+        kind: kind,
+        from: "phone",
+        callId: id,
+        sdp: sdp || "",
+        candidate: candidate || ""
+      })
+    });
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(data.error || "信令失败");
+  }
+
+  async function createPeer() {
+    closePeer();
+    pc = new RTCPeerConnection({ iceServers: iceServers });
+    pc.ontrack = function (ev) {
+      $("remote-video").srcObject = ev.streams[0] || (ev.track && new MediaStream([ev.track]));
+    };
+    pc.onicecandidate = function (ev) {
+      if (!ev.candidate || !callId) return;
+      postSignal("ice", callId, "", JSON.stringify(ev.candidate)).catch(function () {});
+    };
+    pc.onconnectionstatechange = function () {
+      if (!pc) return;
+      setCallStatus("连接状态：" + pc.connectionState);
+    };
+    var stream = await ensureMedia();
+    stream.getTracks().forEach(function (t) { pc.addTrack(t, stream); });
+    return pc;
+  }
+
+  async function hangup(send) {
+    var id = callId;
+    closePeer();
+    stopMedia();
+    pendingOffer = null;
+    callRole = "";
+    callId = "";
+    $("accept-call").hidden = true;
+    if (send && id) {
+      try { await postSignal("hangup", id, "", ""); } catch (e) {}
+    }
+    show("compose");
+  }
+
+  function openSignalStream() {
+    if (es) { try { es.close(); } catch (e) {} es = null; }
+    if (!channel()) return;
+    var q = new URLSearchParams({ channel: channel() });
+    if (token()) q.set("token", token());
+    es = new EventSource("/api/v1/stream?" + q.toString());
+    es.addEventListener("signal", function (ev) {
+      try { onSignal(JSON.parse(ev.data)); } catch (e) {}
+    });
+    es.onerror = function () {
+      // browser will retry
+    };
+  }
+
+  async function onSignal(sig) {
+    if (!sig || !sig.kind || sig.from === "phone") return;
+    if (sig.kind === "hangup") {
+      if (!callId || sig.callId === callId) {
+        hangup(false);
+        setCallStatus("对方已挂断");
+      }
+      return;
+    }
+    if (sig.kind === "offer" && sig.sdp) {
+      pendingOffer = { callId: sig.callId, sdp: sig.sdp };
+      show("call");
+      $("accept-call").hidden = false;
+      setCallStatus("讲台电脑来电，请接听");
+      return;
+    }
+    if (sig.kind === "answer" && sig.sdp && pc && callRole === "caller" && sig.callId === callId) {
+      await pc.setRemoteDescription({ type: "answer", sdp: sig.sdp });
+      setCallStatus("对讲中");
+      return;
+    }
+    if (sig.kind === "ice" && sig.candidate && pc && sig.callId === callId) {
+      try { await pc.addIceCandidate(JSON.parse(sig.candidate)); } catch (e) {}
+    }
+  }
+
+  async function startCall() {
+    show("call");
+    $("accept-call").hidden = true;
+    try {
+      openSignalStream();
+      callId = newCallId();
+      callRole = "caller";
+      setCallStatus("正在呼叫讲台…");
+      await createPeer();
+      var offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await postSignal("offer", callId, offer.sdp, "");
+      setCallStatus("已发起，等待讲台接听");
+    } catch (err) {
+      setCallStatus(err.message || String(err), true);
+    }
+  }
+
+  async function acceptCall() {
+    if (!pendingOffer) return;
+    try {
+      callId = pendingOffer.callId;
+      callRole = "callee";
+      $("accept-call").hidden = true;
+      setCallStatus("正在接听…");
+      await createPeer();
+      await pc.setRemoteDescription({ type: "offer", sdp: pendingOffer.sdp });
+      var answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await postSignal("answer", callId, answer.sdp, "");
+      pendingOffer = null;
+      setCallStatus("对讲中");
+    } catch (err) {
+      setCallStatus(err.message || String(err), true);
+    }
+  }
+
+  $("start-call").addEventListener("click", startCall);
+  $("accept-call").addEventListener("click", acceptCall);
+  $("hangup").addEventListener("click", function () { hangup(true); });
+
+
   loadInfo().then(function () {
     if (!channel()) {
       show("setup");
@@ -284,6 +463,7 @@
     }).then(async function (res) {
       if (res.ok) {
         show("compose");
+        openSignalStream();
         return;
       }
       var data = await res.json().catch(function () { return {}; });

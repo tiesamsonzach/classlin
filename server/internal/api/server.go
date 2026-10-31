@@ -52,6 +52,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/messages/{id}", s.getMessage)
 	mux.HandleFunc("GET /api/v1/files/{id}", s.getFile)
 	mux.HandleFunc("GET /api/v1/stream", s.stream)
+	mux.HandleFunc("POST /api/v1/signal", s.postSignal)
 	mux.Handle("GET /", web.Static())
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -378,16 +379,81 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			flusher.Flush()
-		case payload, ok := <-ch:
+		case pkt, ok := <-ch:
 			if !ok {
 				return
 			}
-			if _, err := fmt.Fprintf(w, "event: message\ndata: %s\n: %s\n\n", payload, strings.Repeat(" ", 2048)); err != nil {
+			event := pkt.Event
+			if event == "" {
+				event = "message"
+			}
+			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n: %s\n\n", event, pkt.Data, strings.Repeat(" ", 2048)); err != nil {
 				return
 			}
 			flusher.Flush()
 		}
 	}
+}
+
+func (s *Server) postSignal(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 256<<10)
+	var body struct {
+		Channel   string `json:"channel"`
+		Token     string `json:"token"`
+		Kind      string `json:"kind"`
+		From      string `json:"from"`
+		CallID    string `json:"callId"`
+		SDP       string `json:"sdp"`
+		Candidate string `json:"candidate"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "内容格式不对")
+		return
+	}
+	channel := firstNonEmpty(body.Channel, channelFrom(r))
+	token := firstNonEmpty(body.Token, tokenFrom(r))
+	channel, err := s.authorize(channel, token)
+	if err != nil {
+		writeAuth(w, err)
+		return
+	}
+	kind := strings.TrimSpace(body.Kind)
+	from := strings.TrimSpace(body.From)
+	switch kind {
+	case "offer", "answer", "ice", "hangup", "ringing":
+	default:
+		writeError(w, http.StatusBadRequest, "不支持的信令类型")
+		return
+	}
+	switch from {
+	case "desktop", "phone":
+	default:
+		writeError(w, http.StatusBadRequest, "from 只能是 desktop 或 phone")
+		return
+	}
+	callID := strings.TrimSpace(body.CallID)
+	if utf8.RuneCountInString(callID) > 64 {
+		writeError(w, http.StatusBadRequest, "callId 太长")
+		return
+	}
+	if utf8.RuneCountInString(body.SDP) > 200000 || utf8.RuneCountInString(body.Candidate) > 8000 {
+		writeError(w, http.StatusBadRequest, "信令内容太大")
+		return
+	}
+	out := map[string]any{
+		"kind":   kind,
+		"from":   from,
+		"callId": callID,
+	}
+	if body.SDP != "" {
+		out["sdp"] = body.SDP
+	}
+	if body.Candidate != "" {
+		out["candidate"] = body.Candidate
+	}
+	payload := mustJSON(out)
+	s.Hub.PublishEvent(channel, "signal", payload)
+	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
 }
 
 func (s *Server) authorize(channel, token string) (string, error) {

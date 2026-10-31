@@ -10,6 +10,9 @@ fn main() {
             "connection_status",
             "screen_metrics",
             "generate_classroom_id",
+            "send_text",
+            "send_image",
+            "send_signal",
         ]),
     );
     if let Err(error) = tauri_build::try_build(attributes) {

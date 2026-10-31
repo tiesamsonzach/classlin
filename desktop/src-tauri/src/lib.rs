@@ -25,7 +25,10 @@ pub fn run() {
             commands::dismiss_popup,
             commands::connection_status,
             commands::screen_metrics,
-            commands::generate_classroom_id
+            commands::generate_classroom_id,
+            commands::send_text,
+            commands::send_image,
+            commands::send_signal
         ])
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
@@ -44,6 +47,7 @@ pub fn run() {
                 status_kind: std::sync::Mutex::new("off".into()),
                 generation: tx,
                 seen: std::sync::Mutex::new(std::collections::VecDeque::new()),
+                suppressed: std::sync::Mutex::new(std::collections::HashSet::new()),
                 status_item: std::sync::Mutex::new(None),
                 channel_item: std::sync::Mutex::new(None),
                 autostart_item: std::sync::Mutex::new(None),
