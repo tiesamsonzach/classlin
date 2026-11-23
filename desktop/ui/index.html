@@ -54,15 +54,19 @@
           <button type="button" id="call-toggle" class="secondary slim-inline">打开面板</button>
         </div>
         <div id="call-panel" hidden>
-          <p class="hint">手机打开同一教室网页后，可点「开始对讲」。需摄像头与麦克风权限。目前仅用公共 STUN，部分网络可能连不上（需自建 TURN）。</p>
+          <p class="hint">管理员来电后，本机会先向服务器确认对方已登录，并且允许呼叫这间教室，然后自动接听。未通过确认不会打开摄像头。同一时间只接通一路。不共享屏幕，也不录像。声音从这台电脑的扬声器播出。</p>
           <div class="videos">
-            <video id="local-video" playsinline autoplay muted></video>
-            <video id="remote-video" playsinline autoplay></video>
+            <figure>
+              <video id="remote-video" playsinline autoplay></video>
+              <figcaption>管理员</figcaption>
+            </figure>
+            <figure>
+              <video id="local-video" playsinline autoplay muted></video>
+              <figcaption>本教室</figcaption>
+            </figure>
           </div>
-          <p id="call-status" class="hint" role="status">空闲</p>
+          <p id="call-status" class="hint" role="status">空闲，等待管理员来电</p>
           <div class="compose-actions">
-            <button type="button" id="call-start" class="primary slim-inline">开始对讲</button>
-            <button type="button" id="call-accept" class="primary slim-inline" hidden>接听</button>
             <button type="button" id="call-hangup" class="secondary slim-inline">挂断</button>
           </div>
         </div>
@@ -92,6 +96,7 @@
       <p class="hint">关掉这个窗口不会退出。新消息会弹出大窗口，并出现系统通知。</p>
     </section>
   </main>
+  <script src="call-policy.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

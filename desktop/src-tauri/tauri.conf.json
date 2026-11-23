@@ -23,7 +23,8 @@
         "focus": false,
         "resizable": true,
         "maximizable": true,
-        "center": true
+        "center": true,
+        "backgroundThrottling": "disabled"
       },
       {
         "label": "popup",
@@ -39,11 +40,12 @@
         "maximizable": true,
         "alwaysOnTop": true,
         "center": true,
-        "visibleOnAllWorkspaces": true
+        "visibleOnAllWorkspaces": true,
+        "backgroundThrottling": "disabled"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost https://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'",
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost https://asset.localhost data: blob:; media-src 'self' blob: mediastream:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'",
       "assetProtocol": {
         "enable": true,
         "scope": ["$APPCACHE/**"]
@@ -60,6 +62,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "infoPlist": "Info.plist"
+    },
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"

@@ -1,4 +1,7 @@
 # 把 DOMAIN 设成已经解析到这台机器的域名。Caddy 会自动申请 Let's Encrypt 证书。
+# Caddy 只代理网页和 /api。TURN 不是 HTTP，不要把 3478 或中继端口交给 Caddy。
+# coturn 需要自己监听 UDP/TCP 3478，以及 TURN 配置里的 min-port～max-port。
+# 如果要用 turns:（TLS），给 coturn 单独配证书；下面这个站点证书不会自动变成 TURN 证书。
 {$DOMAIN} {
 	# 不要 gzip / 缓冲 /api/v1/stream，否则教室电脑会晚收到消息。
 	reverse_proxy server:8080

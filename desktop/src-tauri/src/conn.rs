@@ -14,7 +14,12 @@ use crate::window::present_popup;
 pub async fn supervise(app: AppHandle, mut rx: watch::Receiver<u64>) {
     let mut backoff: u64 = 1;
     loop {
-        let cfg = app.state::<AppState>().config.lock().expect("config").clone();
+        let cfg = app
+            .state::<AppState>()
+            .config
+            .lock()
+            .expect("config")
+            .clone();
         if !cfg.is_complete() {
             set_status(&app, "未设置", "off");
             if rx.changed().await.is_err() {
@@ -85,18 +90,85 @@ async fn run_session(app: &AppHandle, cfg: crate::state::Config) -> Result<bool,
                     deliver(app.clone(), client.clone(), msg, true);
                 }
             } else if ev.event == "signal" {
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&ev.data) {
-                    let _ = app.emit("signal", value);
-                }
+                emit_signal(app, &client, &ev.data).await;
             }
         }
     }
     Ok(received)
 }
 
+async fn emit_signal(app: &AppHandle, client: &Client, data: &str) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(data) else {
+        return;
+    };
+    let kind = value.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+    let from = value.get("from").and_then(|v| v.as_str()).unwrap_or("");
+    if kind == "offer" && from != "desktop" {
+        let call_id = value
+            .get("callId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if call_id.is_empty() {
+            let _ = app.emit(
+                "signal",
+                serde_json::json!({
+                    "kind": "offer-rejected",
+                    "verified": false,
+                    "error": "来电缺少编号"
+                }),
+            );
+            return;
+        }
+        // Peek only. The page claims the answer key immediately before opening the camera.
+        match client.verify_call(&call_id, false).await {
+            Ok(verdict) if verdict.get("ok").and_then(|v| v.as_bool()) == Some(true) => {
+                // Show the window before the page handles the offer. A hidden
+                // webview may be throttled and would otherwise miss auto-answer.
+                crate::window::show_main(app);
+                tokio::time::sleep(Duration::from_millis(400)).await;
+                let _ = app.emit("signal", value);
+            }
+            Ok(verdict) => {
+                let err = verdict
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("无权接听");
+                let _ = app.emit(
+                    "signal",
+                    serde_json::json!({
+                        "kind": "offer-rejected",
+                        "callId": call_id,
+                        "verified": false,
+                        "error": err
+                    }),
+                );
+            }
+            Err(err) => {
+                let _ = app.emit(
+                    "signal",
+                    serde_json::json!({
+                        "kind": "offer-rejected",
+                        "callId": call_id,
+                        "verified": false,
+                        "error": err
+                    }),
+                );
+            }
+        }
+        return;
+    }
+    let _ = app.emit("signal", value);
+}
+
 async fn catch_up(app: &AppHandle, client: &Client) -> Result<(), String> {
     let page = client.list(None, 20).await?;
-    let last_seen = app.state::<AppState>().config.lock().expect("config").last_seen_ms;
+    let last_seen = app
+        .state::<AppState>()
+        .config
+        .lock()
+        .expect("config")
+        .last_seen_ms;
     let cutoff = now_ms().saturating_sub(30 * 60 * 1000);
     let newest = page
         .messages
@@ -193,12 +265,8 @@ pub fn set_status(app: &AppHandle, text: &str, kind: &str) {
             .clone();
         let _ = tray.set_tooltip(Some(format!("课堂通知 · {channel} · {text}")));
     }
-    let _ = app.emit(
-        "status",
-        serde_json::json!({ "text": text, "kind": kind }),
-    );
+    let _ = app.emit("status", serde_json::json!({ "text": text, "kind": kind }));
 }
-
 
 fn take_suppressed(app: &AppHandle, id: &str) -> bool {
     let state = app.state::<AppState>();

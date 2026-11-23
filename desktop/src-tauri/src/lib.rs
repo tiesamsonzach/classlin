@@ -4,10 +4,20 @@ mod state;
 mod tray;
 mod window;
 
+use tauri::webview::{PermissionKind, PermissionResponse};
 use tauri::Manager;
 
 pub fn run() {
     let builder = tauri::Builder::default()
+        .on_permission_request(|_, kind| match kind {
+            // Classroom auto-answer uses the system camera, microphone, and speakers.
+            // Screen capture stays denied: this version does not share the screen.
+            PermissionKind::Camera | PermissionKind::Microphone | PermissionKind::Autoplay => {
+                PermissionResponse::Allow
+            }
+            PermissionKind::DisplayCapture => PermissionResponse::Deny,
+            _ => PermissionResponse::Default,
+        })
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             window::show_main(app);
         }))
@@ -28,7 +38,10 @@ pub fn run() {
             commands::generate_classroom_id,
             commands::send_text,
             commands::send_image,
-            commands::send_signal
+            commands::send_signal,
+            commands::verify_call,
+            commands::ice_servers,
+            commands::focus_for_call
         ])
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;

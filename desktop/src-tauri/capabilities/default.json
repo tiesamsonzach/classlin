@@ -17,6 +17,9 @@
     "allow-generate-classroom-id",
     "allow-send-text",
     "allow-send-image",
-    "allow-send-signal"
+    "allow-send-signal",
+    "allow-verify-call",
+    "allow-ice-servers",
+    "allow-focus-for-call"
   ]
 }

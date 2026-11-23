@@ -1,6 +1,6 @@
 fn main() {
-    let attributes = tauri_build::Attributes::new().app_manifest(
-        tauri_build::AppManifest::new().commands(&[
+    let attributes =
+        tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
             "load_config",
             "save_config",
             "latest_message",
@@ -13,8 +13,10 @@ fn main() {
             "send_text",
             "send_image",
             "send_signal",
-        ]),
-    );
+            "verify_call",
+            "ice_servers",
+            "focus_for_call",
+        ]));
     if let Err(error) = tauri_build::try_build(attributes) {
         panic!("failed to run tauri-build: {error:#}");
     }

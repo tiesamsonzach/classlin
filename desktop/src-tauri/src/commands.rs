@@ -23,7 +23,11 @@ pub struct StatusView {
 
 #[tauri::command]
 pub fn load_config(app: AppHandle) -> Config {
-    app.state::<AppState>().config.lock().expect("config").clone()
+    app.state::<AppState>()
+        .config
+        .lock()
+        .expect("config")
+        .clone()
 }
 
 #[tauri::command]
@@ -77,12 +81,21 @@ pub fn generate_classroom_id() -> String {
 
 #[tauri::command]
 pub fn latest_message(app: AppHandle) -> Option<MessageView> {
-    app.state::<AppState>().latest.lock().expect("latest").clone()
+    app.state::<AppState>()
+        .latest
+        .lock()
+        .expect("latest")
+        .clone()
 }
 
 #[tauri::command]
 pub async fn list_history(app: AppHandle) -> Result<Vec<HistoryItem>, String> {
-    let cfg = app.state::<AppState>().config.lock().expect("config").clone();
+    let cfg = app
+        .state::<AppState>()
+        .config
+        .lock()
+        .expect("config")
+        .clone();
     if !cfg.is_complete() {
         return Err("请先填写服务器和教室编号".into());
     }
@@ -93,7 +106,12 @@ pub async fn list_history(app: AppHandle) -> Result<Vec<HistoryItem>, String> {
 
 #[tauri::command]
 pub async fn open_message(app: AppHandle, id: String) -> Result<(), String> {
-    let cfg = app.state::<AppState>().config.lock().expect("config").clone();
+    let cfg = app
+        .state::<AppState>()
+        .config
+        .lock()
+        .expect("config")
+        .clone();
     if !cfg.is_complete() {
         return Err("请先填写服务器和教室编号".into());
     }
@@ -158,6 +176,7 @@ pub struct SendSignalInput {
     pub call_id: String,
     pub sdp: Option<String>,
     pub candidate: Option<String>,
+    pub answer_key: Option<String>,
 }
 
 fn remember_suppressed(app: &AppHandle, id: &str) {
@@ -178,7 +197,12 @@ pub async fn send_text(app: AppHandle, input: SendTextInput) -> Result<HistoryIt
     if body.is_empty() {
         return Err("请填写文字".into());
     }
-    let cfg = app.state::<AppState>().config.lock().expect("config").clone();
+    let cfg = app
+        .state::<AppState>()
+        .config
+        .lock()
+        .expect("config")
+        .clone();
     if !cfg.is_complete() {
         return Err("请先填写服务器和教室编号".into());
     }
@@ -192,16 +216,17 @@ pub async fn send_text(app: AppHandle, input: SendTextInput) -> Result<HistoryIt
 
 #[tauri::command]
 pub async fn send_image(app: AppHandle, input: SendImageInput) -> Result<HistoryItem, String> {
-    let cfg = app.state::<AppState>().config.lock().expect("config").clone();
+    let cfg = app
+        .state::<AppState>()
+        .config
+        .lock()
+        .expect("config")
+        .clone();
     if !cfg.is_complete() {
         return Err("请先填写服务器和教室编号".into());
     }
     let raw = input.data_base64.trim();
-    let b64 = raw
-        .split(',')
-        .last()
-        .unwrap_or(raw)
-        .trim();
+    let b64 = raw.split(',').last().unwrap_or(raw).trim();
     use base64::Engine;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(b64)
@@ -223,7 +248,12 @@ pub async fn send_image(app: AppHandle, input: SendImageInput) -> Result<History
 
 #[tauri::command]
 pub async fn send_signal(app: AppHandle, input: SendSignalInput) -> Result<(), String> {
-    let cfg = app.state::<AppState>().config.lock().expect("config").clone();
+    let cfg = app
+        .state::<AppState>()
+        .config
+        .lock()
+        .expect("config")
+        .clone();
     if !cfg.is_complete() {
         return Err("请先填写服务器和教室编号".into());
     }
@@ -240,6 +270,50 @@ pub async fn send_signal(app: AppHandle, input: SendSignalInput) -> Result<(), S
             call_id,
             input.sdp.as_deref(),
             input.candidate.as_deref(),
+            input.answer_key.as_deref(),
         )
         .await
+}
+
+#[tauri::command]
+pub async fn verify_call(
+    app: AppHandle,
+    call_id: String,
+    claim: bool,
+) -> Result<serde_json::Value, String> {
+    let cfg = app
+        .state::<AppState>()
+        .config
+        .lock()
+        .expect("config")
+        .clone();
+    if !cfg.is_complete() {
+        return Err("请先填写服务器和教室编号".into());
+    }
+    let call_id = call_id.trim();
+    if call_id.is_empty() {
+        return Ok(serde_json::json!({ "ok": false, "error": "来电缺少编号" }));
+    }
+    let client = Client::new(&cfg.server_url, &cfg.channel, &cfg.token)?;
+    client.verify_call(call_id, claim).await
+}
+
+#[tauri::command]
+pub async fn ice_servers(app: AppHandle) -> Result<serde_json::Value, String> {
+    let cfg = app
+        .state::<AppState>()
+        .config
+        .lock()
+        .expect("config")
+        .clone();
+    if !cfg.is_complete() {
+        return Err("请先填写服务器和教室编号".into());
+    }
+    let client = Client::new(&cfg.server_url, &cfg.channel, &cfg.token)?;
+    client.fetch_ice().await
+}
+
+#[tauri::command]
+pub fn focus_for_call(app: AppHandle) {
+    crate::window::show_main(&app);
 }

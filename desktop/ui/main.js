@@ -155,8 +155,10 @@
   var pc = null;
   var localStream = null;
   var callId = "";
-  var callRole = "";
-  var pendingOffer = null;
+  var answerKey = "";
+  var callBusy = false;
+  var callEpoch = 0;
+  var pendingRemoteIce = [];
   var iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
 
   function setComposeStatus(text, bad) {
@@ -225,20 +227,32 @@
     $("call-status").textContent = text || "";
   }
 
-  async function ensureLocalMedia() {
-    if (localStream) return localStream;
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-    $("local-video").srcObject = localStream;
-    return localStream;
-  }
-
   function stopLocalMedia() {
     if (localStream) {
       localStream.getTracks().forEach(function (t) { t.stop(); });
       localStream = null;
     }
     $("local-video").srcObject = null;
-    $("remote-video").srcObject = null;
+    var remote = $("remote-video");
+    remote.srcObject = null;
+    remote.muted = false;
+  }
+
+  function attachRemote(stream) {
+    var el = $("remote-video");
+    el.muted = false;
+    el.volume = 1;
+    el.srcObject = stream;
+    if (typeof el.setSinkId === "function") {
+      el.setSinkId("default").catch(function () {});
+    }
+    var play = el.play();
+    if (play && play.catch) play.catch(function () {});
+  }
+
+  function showCallPanel() {
+    $("call-panel").hidden = false;
+    $("call-toggle").textContent = "收起面板";
   }
 
   function closePeer() {
@@ -248,130 +262,186 @@
     }
   }
 
-  async function hangup(sendSignal) {
+  function sendSignal(kind, id, sdp, candidate) {
+    if (!tauri || !id) return Promise.resolve();
+    return tauri.core.invoke("send_signal", {
+      input: {
+        kind: kind,
+        callId: id,
+        sdp: sdp || null,
+        candidate: candidate || null,
+        answerKey: answerKey || null
+      }
+    });
+  }
+
+  async function hangup(send) {
+    callEpoch++;
     var id = callId;
+    var key = answerKey;
     closePeer();
     stopLocalMedia();
-    pendingOffer = null;
-    callRole = "";
+    pendingRemoteIce = [];
+    callBusy = false;
     callId = "";
-    $("call-accept").hidden = true;
-    setCallStatus("已挂断");
-    if (sendSignal && id && tauri) {
-      try {
-        await tauri.core.invoke("send_signal", {
-          input: { kind: "hangup", callId: id, sdp: null, candidate: null }
-        });
-      } catch (e) {}
+    answerKey = "";
+    if (send && id && key) {
+      answerKey = key;
+      try { await sendSignal("hangup", id, null, null); } catch (e) {}
+      answerKey = "";
     }
   }
 
-  function newCallId() {
-    return "c-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  async function onSignal(sig) {
+    if (!sig || !sig.kind || sig.from === "desktop") return;
+    if (sig.kind === "offer-rejected") {
+      if (!callBusy && !callId) setCallStatus(sig.error || "未授权来电，不接听，摄像头未打开");
+      return;
+    }
+    if (sig.kind === "hangup") {
+      if (!callId || sig.callId === callId) {
+        hangup(false);
+        setCallStatus("管理员已挂断");
+      }
+      return;
+    }
+    if (sig.kind === "offer") {
+      var busyDecision = decideIncomingCall({ inCall: callBusy || !!callId, verified: true });
+      if (busyDecision.action === "busy") {
+        setCallStatus("正在通话，已拒绝新的来电");
+        return;
+      }
+      var epoch = callEpoch;
+      callBusy = true;
+      showCallPanel();
+      setCallStatus("正在确认来电身份…");
+      try {
+        var verdict = await tauri.core.invoke("verify_call", { callId: sig.callId, claim: true });
+        if (epoch !== callEpoch) {
+          if (verdict && verdict.answerKey) {
+            answerKey = verdict.answerKey;
+            callId = sig.callId;
+            try { await sendSignal("hangup", callId, null, null); } catch (e) {}
+            answerKey = "";
+            callId = "";
+          }
+          return;
+        }
+        var decision = decideIncomingCall({
+          inCall: false,
+          verified: !!(verdict && verdict.ok === true && verdict.answerKey)
+        });
+        if (!decision.openCamera) {
+          callBusy = false;
+          setCallStatus("未授权来电，不接听，摄像头未打开");
+          return;
+        }
+        if (!sig.sdp) {
+          answerKey = verdict.answerKey;
+          callId = sig.callId;
+          setCallStatus("来电内容不完整，摄像头未打开");
+          hangup(true);
+          return;
+        }
+        answerKey = verdict.answerKey;
+        callId = sig.callId;
+        if (tauri) {
+          try { await tauri.core.invoke("focus_for_call"); } catch (e) {}
+        }
+        setCallStatus("正在接通" + (verdict.caller ? "管理员 " + verdict.caller : "") + "…");
+        await createPeer();
+        if (epoch !== callEpoch || !pc) {
+          closePeer();
+          stopLocalMedia();
+          if (answerKey && callId) {
+            try { await sendSignal("hangup", callId, null, null); } catch (e) {}
+          }
+          answerKey = "";
+          callId = "";
+          callBusy = false;
+          return;
+        }
+        await pc.setRemoteDescription({ type: "offer", sdp: sig.sdp });
+        await flushRemoteIce();
+        var answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await sendSignal("answer", callId, answer.sdp, null);
+        setCallStatus("通话中。本机使用摄像头、麦克风和扬声器");
+      } catch (err) {
+        setCallStatus(String(err && err.message || err));
+        hangup(true);
+      }
+      return;
+    }
+    if (sig.kind === "ice" && sig.candidate && sig.callId === callId) {
+      try { await addRemoteIce(sig.candidate); } catch (e) {}
+    }
+  }
+
+  async function addRemoteIce(raw) {
+    var cand = JSON.parse(raw);
+    if (!pc || !pc.remoteDescription) {
+      pendingRemoteIce.push(cand);
+      return;
+    }
+    await pc.addIceCandidate(cand);
+  }
+
+  async function flushRemoteIce() {
+    var queued = pendingRemoteIce;
+    pendingRemoteIce = [];
+    for (var i = 0; i < queued.length; i++) {
+      try { await pc.addIceCandidate(queued[i]); } catch (e) {}
+    }
+  }
+
+  async function loadIce() {
+    if (!tauri) return;
+    try {
+      var cfg = await tauri.core.invoke("ice_servers");
+      if (cfg && cfg.iceServers && cfg.iceServers.length) iceServers = cfg.iceServers;
+    } catch (e) {}
   }
 
   async function createPeer() {
     closePeer();
+    await loadIce();
     pc = new RTCPeerConnection({ iceServers: iceServers });
+    var remoteStream = new MediaStream();
     pc.ontrack = function (ev) {
-      $("remote-video").srcObject = ev.streams[0] || (ev.track && new MediaStream([ev.track]));
+      if (ev.streams && ev.streams[0]) {
+        attachRemote(ev.streams[0]);
+        return;
+      }
+      remoteStream.addTrack(ev.track);
+      attachRemote(remoteStream);
     };
     pc.onicecandidate = function (ev) {
-      if (!ev.candidate || !callId || !tauri) return;
-      tauri.core.invoke("send_signal", {
-        input: {
-          kind: "ice",
-          callId: callId,
-          sdp: null,
-          candidate: JSON.stringify(ev.candidate)
-        }
-      }).catch(function () {});
+      if (!ev.candidate || !callId) return;
+      sendSignal("ice", callId, null, JSON.stringify(ev.candidate)).catch(function () {});
     };
     pc.onconnectionstatechange = function () {
       if (!pc) return;
-      setCallStatus("连接状态：" + pc.connectionState);
-      if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-        setCallStatus("对讲连接中断");
-      }
+      if (pc.connectionState === "connected") setCallStatus("通话中。本机使用摄像头、麦克风和扬声器");
+      if (pc.connectionState === "failed") setCallStatus("对讲连接失败。若在校园网外，需要配置 TURN");
     };
     var stream = await ensureLocalMedia();
     stream.getTracks().forEach(function (track) { pc.addTrack(track, stream); });
     return pc;
   }
 
-  async function startCall() {
-    if (!tauri) {
-      setCallStatus("请在教室电脑程序里对讲");
-      return;
+  async function ensureLocalMedia() {
+    if (localStream) return localStream;
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    if (!localStream.getAudioTracks().length || !localStream.getVideoTracks().length) {
+      localStream.getTracks().forEach(function (t) { t.stop(); });
+      localStream = null;
+      throw new Error("需要同时使用本机摄像头和麦克风");
     }
-    try {
-      callId = newCallId();
-      callRole = "caller";
-      $("call-accept").hidden = true;
-      setCallStatus("正在呼叫手机…");
-      await createPeer();
-      var offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      await tauri.core.invoke("send_signal", {
-        input: { kind: "offer", callId: callId, sdp: offer.sdp, candidate: null }
-      });
-      setCallStatus("已发起对讲，等待手机接听");
-    } catch (err) {
-      setCallStatus(String(err));
-      hangup(false);
-    }
-  }
-
-  async function acceptCall() {
-    if (!pendingOffer || !tauri) return;
-    try {
-      callId = pendingOffer.callId;
-      callRole = "callee";
-      $("call-accept").hidden = true;
-      setCallStatus("正在接听…");
-      await createPeer();
-      await pc.setRemoteDescription({ type: "offer", sdp: pendingOffer.sdp });
-      var answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await tauri.core.invoke("send_signal", {
-        input: { kind: "answer", callId: callId, sdp: answer.sdp, candidate: null }
-      });
-      pendingOffer = null;
-      setCallStatus("对讲中");
-    } catch (err) {
-      setCallStatus(String(err));
-      hangup(true);
-    }
-  }
-
-  async function onSignal(sig) {
-    if (!sig || !sig.kind) return;
-    if (sig.from === "desktop") return;
-    if (sig.kind === "hangup") {
-      if (!callId || sig.callId === callId) {
-        hangup(false);
-        setCallStatus("对方已挂断");
-      }
-      return;
-    }
-    if (sig.kind === "offer" && sig.sdp) {
-      pendingOffer = { callId: sig.callId, sdp: sig.sdp };
-      $("call-panel").hidden = false;
-      $("call-accept").hidden = false;
-      setCallStatus("手机来电，请点接听");
-      return;
-    }
-    if (sig.kind === "answer" && sig.sdp && pc && callRole === "caller" && sig.callId === callId) {
-      await pc.setRemoteDescription({ type: "answer", sdp: sig.sdp });
-      setCallStatus("对讲中");
-      return;
-    }
-    if (sig.kind === "ice" && sig.candidate && pc && sig.callId === callId) {
-      try {
-        var cand = JSON.parse(sig.candidate);
-        await pc.addIceCandidate(cand);
-      } catch (e) {}
-    }
+    var local = $("local-video");
+    local.srcObject = localStream;
+    local.muted = true;
+    return localStream;
   }
 
   $("compose-pick").addEventListener("click", function () { $("compose-file").click(); });
@@ -393,9 +463,9 @@
     $("call-panel").hidden = !$("call-panel").hidden;
     $("call-toggle").textContent = $("call-panel").hidden ? "打开面板" : "收起面板";
   });
-  $("call-start").addEventListener("click", startCall);
-  $("call-accept").addEventListener("click", acceptCall);
-  $("call-hangup").addEventListener("click", function () { hangup(true); });
+  $("call-hangup").addEventListener("click", function () {
+    hangup(true).then(function () { setCallStatus("已挂断"); });
+  });
 
 
   $("save-setup").addEventListener("click", function () { save(false); });
