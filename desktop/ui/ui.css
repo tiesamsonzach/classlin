@@ -214,3 +214,9 @@ textarea {
   border-radius: 0.7rem;
   object-fit: cover;
 }
+.videos figure { margin: 0; }
+.videos figcaption {
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  color: #5c6b63;
+}

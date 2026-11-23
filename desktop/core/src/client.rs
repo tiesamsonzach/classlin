@@ -100,7 +100,9 @@ impl Client {
             .await
             .map_err(net_err)?;
         let res = read_ok(res).await?;
-        res.json().await.map_err(|_| "服务器响应无法识别".to_string())
+        res.json()
+            .await
+            .map_err(|_| "服务器响应无法识别".to_string())
     }
 
     pub async fn list(&self, before: Option<i64>, limit: u32) -> Result<Page, String> {
@@ -108,13 +110,19 @@ impl Client {
             .http
             .get(self.url("/api/v1/messages"))
             .timeout(Duration::from_secs(20))
-            .query(&[("channel", self.channel.as_str()), ("limit", &limit.to_string())]);
+            .query(&[
+                ("channel", self.channel.as_str()),
+                ("limit", &limit.to_string()),
+            ]);
         if let Some(before) = before {
             req = req.query(&[("before", before.to_string())]);
         }
         let res = self.authed(req).send().await.map_err(net_err)?;
         let res = read_ok(res).await?;
-        let page: ListResp = res.json().await.map_err(|_| "历史记录无法识别".to_string())?;
+        let page: ListResp = res
+            .json()
+            .await
+            .map_err(|_| "历史记录无法识别".to_string())?;
         Ok(Page {
             messages: page.messages,
             next_before: page.next_before,
@@ -183,7 +191,6 @@ impl Client {
         Ok(())
     }
 
-
     pub async fn post_text(&self, body: &str) -> Result<RemoteMessage, String> {
         let payload = serde_json::json!({
             "channel": self.channel,
@@ -202,7 +209,10 @@ impl Client {
             .await
             .map_err(net_err)?;
         let res = read_ok(res).await?;
-        let wrapped: MessageResp = res.json().await.map_err(|_| "发送结果无法识别".to_string())?;
+        let wrapped: MessageResp = res
+            .json()
+            .await
+            .map_err(|_| "发送结果无法识别".to_string())?;
         Ok(wrapped.message)
     }
 
@@ -265,7 +275,10 @@ impl Client {
             .await
             .map_err(net_err)?;
         let res = read_ok(res).await?;
-        let wrapped: MessageResp = res.json().await.map_err(|_| "发送结果无法识别".to_string())?;
+        let wrapped: MessageResp = res
+            .json()
+            .await
+            .map_err(|_| "发送结果无法识别".to_string())?;
         Ok(wrapped.message)
     }
 
@@ -276,6 +289,7 @@ impl Client {
         call_id: &str,
         sdp: Option<&str>,
         candidate: Option<&str>,
+        answer_key: Option<&str>,
     ) -> Result<(), String> {
         let mut payload = serde_json::json!({
             "channel": self.channel,
@@ -290,6 +304,9 @@ impl Client {
         if let Some(candidate) = candidate.filter(|s| !s.is_empty()) {
             payload["candidate"] = serde_json::Value::String(candidate.to_string());
         }
+        if let Some(answer_key) = answer_key.filter(|s| !s.is_empty()) {
+            payload["answerKey"] = serde_json::Value::String(answer_key.to_string());
+        }
         let res = self
             .authed(
                 self.http
@@ -303,6 +320,65 @@ impl Client {
             .map_err(net_err)?;
         let _ = read_ok(res).await?;
         Ok(())
+    }
+
+    /// Ask the server whether this call was placed by a logged-in admin for this room.
+    /// `claim` takes the one-time answer key. A failed check returns `ok: false` and never
+    /// includes a key, so the classroom can refuse before opening the camera.
+    pub async fn verify_call(
+        &self,
+        call_id: &str,
+        claim: bool,
+    ) -> Result<serde_json::Value, String> {
+        let payload = serde_json::json!({
+            "channel": self.channel,
+            "token": self.token,
+            "callId": call_id,
+            "claim": claim,
+        });
+        let res = self
+            .authed(
+                self.http
+                    .post(self.url("/api/v1/calls/verify"))
+                    .timeout(Duration::from_secs(20))
+                    .header("Content-Type", "application/json")
+                    .json(&payload),
+            )
+            .send()
+            .await
+            .map_err(net_err)?;
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        let mut value: serde_json::Value =
+            serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({ "error": text }));
+        if !status.is_success() {
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("ok".into(), serde_json::Value::Bool(false));
+            } else {
+                value = serde_json::json!({
+                    "ok": false,
+                    "error": format!("服务器返回 {}", status.as_u16())
+                });
+            }
+        }
+        Ok(value)
+    }
+
+    pub async fn fetch_ice(&self) -> Result<serde_json::Value, String> {
+        let res = self
+            .authed(
+                self.http
+                    .get(self.url("/api/v1/ice"))
+                    .timeout(Duration::from_secs(15))
+                    .query(&[("channel", self.channel.as_str())]),
+            )
+            .send()
+            .await
+            .map_err(net_err)?;
+        let res = read_ok(res).await?;
+        res.json()
+            .await
+            .map_err(|_| "通话网络配置无法识别".to_string())
     }
 
     fn url(&self, path: &str) -> String {

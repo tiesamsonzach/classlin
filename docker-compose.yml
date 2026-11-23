@@ -10,6 +10,17 @@ services:
       PORT: "8080"
       DATA_DIR: /data
       TZ: Asia/Shanghai
+      ADMIN_USERS: ${ADMIN_USERS:-}
+      ADMIN_USER: ${ADMIN_USER:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_CLASSROOMS: ${ADMIN_CLASSROOMS:-}
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:-}
+      STUN_URLS: ${STUN_URLS:-stun:stun.l.google.com:19302}
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_SECRET: ${TURN_SECRET:-}
+      TURN_USERNAME: ${TURN_USERNAME:-}
+      TURN_PASSWORD: ${TURN_PASSWORD:-}
+      TURN_TTL_SECONDS: ${TURN_TTL_SECONDS:-3600}
     ports:
       # HTTPS 时把 HTTP_BIND 设成 127.0.0.1，避免明文 8787 对公网开放。
       - "${HTTP_BIND:-0.0.0.0}:${PORT:-8787}:8080"
@@ -33,6 +44,29 @@ services:
       - caddy-config:/config
     depends_on:
       - server
+
+  # 可选 TURN。默认的 docker compose up 不会启动它。
+  # 需要校外互通时，先把 TURN_SECRET 写成和上面服务器相同的一串，再执行：
+  #   docker compose --profile turn up -d
+  # coturn 使用宿主机网络，这样 UDP 中继端口才能直接对到公网。不要把它指到现网机器上试。
+  coturn:
+    image: coturn/coturn:4.6.2
+    profiles: ["turn"]
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --listening-port=3478
+      - --fingerprint
+      - --lt-cred-mech
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET:-replace-before-use}
+      - --realm=${TURN_REALM:-notify.example.com}
+      - --min-port=49160
+      - --max-port=49200
+      - --no-multicast-peers
+      - --no-cli
 
 volumes:
   notify-data:

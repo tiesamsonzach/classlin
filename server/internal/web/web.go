@@ -10,7 +10,7 @@ import (
 //go:embed static
 var staticFS embed.FS
 
-const csp = "default-src 'self'; img-src 'self' blob:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+const csp = "default-src 'self'; connect-src 'self'; img-src 'self' blob:; media-src 'self' blob: mediastream:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
 func Static() http.Handler {
 	sub, err := fs.Sub(staticFS, "static")

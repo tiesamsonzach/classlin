@@ -401,7 +401,7 @@ func TestHealth(t *testing.T) {
 	}
 }
 
-func TestPostSignal(t *testing.T) {
+func TestPostSignalOfferIsNotAnonymous(t *testing.T) {
 	s, ts := start(t, "")
 	sub, cancel := s.Hub.Subscribe("301")
 	defer cancel()
@@ -418,15 +418,12 @@ func TestPostSignal(t *testing.T) {
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
-	if res.StatusCode != http.StatusAccepted {
+	if res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("%d %s", res.StatusCode, raw)
 	}
 	select {
 	case pkt := <-sub:
-		if pkt.Event != "signal" || !bytes.Contains(pkt.Data, []byte(`"kind":"offer"`)) {
-			t.Fatalf("%s %s", pkt.Event, pkt.Data)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for signal")
+		t.Fatalf("anonymous offer was forwarded: %s %s", pkt.Event, pkt.Data)
+	case <-time.After(200 * time.Millisecond):
 	}
 }

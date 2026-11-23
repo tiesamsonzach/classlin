@@ -17,6 +17,16 @@
     </div>
   </header>
   <main class="wrap main">
+    <section id="login" class="card" hidden>
+      <label for="admin-user">管理员账号</label>
+      <input id="admin-user" maxlength="32" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="例如 teacher">
+      <label for="admin-pass">密码</label>
+      <input id="admin-pass" type="password" maxlength="128" autocomplete="current-password" placeholder="管理员密码">
+      <p id="login-error" class="status bad" role="status"></p>
+      <button type="button" id="login-btn" class="primary">登录</button>
+      <p class="hint">视频对讲必须先登录。教室电脑不用登录，仍然只认教室编号。文字和照片不要求这个登录。</p>
+    </section>
+
     <section id="setup" class="card">
       <label for="channel">教室编号</label>
       <input id="channel" maxlength="32" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="例如 7K3M-P9WQ" enterkeyhint="go">
@@ -31,6 +41,8 @@
     </section>
 
     <section id="compose" class="card" hidden>
+      <p id="admin-bar" class="hint" hidden>管理员 <strong id="admin-name"></strong> <button type="button" id="logout" class="texty">退出登录</button></p>
+      <p id="call-guard" class="hint"></p>
       <label for="text">内容</label>
       <textarea id="text" maxlength="2000" placeholder="写一句话，比如：请翻开第 12 页"></textarea>
       <div class="photo-actions">
@@ -43,21 +55,26 @@
       <p id="send-status" class="status" role="status" aria-live="polite"></p>
       <div class="dock">
         <button type="button" id="send" class="primary">发送</button>
-        <button type="button" id="start-call" class="secondary">视频对讲</button>
+        <button type="button" id="start-call" class="secondary" disabled>视频对讲</button>
         <button type="button" id="to-history" class="texty">历史消息</button>
         <button type="button" id="change" class="texty">更换教室编号</button>
       </div>
     </section>
 
     <section id="call" class="card" hidden>
-      <p class="hint">与讲台电脑视频对讲。请允许摄像头和麦克风。部分校园网可能需要 TURN 才能连通。</p>
+      <p class="hint">你能看到、听到教室，教室也能看到、听到你。双方都用系统摄像头、麦克风和扬声器。不共享屏幕，也不录像。校园网外需要 TURN。</p>
       <div class="videos">
-        <video id="local-video" playsinline autoplay muted></video>
-        <video id="remote-video" playsinline autoplay></video>
+        <figure>
+          <video id="remote-video" playsinline autoplay></video>
+          <figcaption>教室</figcaption>
+        </figure>
+        <figure>
+          <video id="local-video" playsinline autoplay muted></video>
+          <figcaption>我</figcaption>
+        </figure>
       </div>
       <p id="call-status" class="status" role="status">准备中…</p>
       <div class="dock">
-        <button type="button" id="accept-call" class="primary" hidden>接听</button>
         <button type="button" id="hangup" class="secondary">挂断 / 返回</button>
       </div>
     </section>
@@ -73,6 +90,7 @@
       <button type="button" id="more" class="secondary" hidden>更早的消息</button>
     </section>
   </main>
+  <script src="call-policy.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

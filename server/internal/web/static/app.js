@@ -8,6 +8,67 @@
   var previewURL = "";
   var nextBefore = null;
   var sending = false;
+  var adminSession = { configured: false, authenticated: false, allClassrooms: false, classrooms: [] };
+
+  function applyAdmin(session) {
+    adminSession = session || { configured: false, authenticated: false, allClassrooms: false, classrooms: [] };
+    var authed = !!adminSession.authenticated;
+    $("login").hidden = authed || !adminSession.configured;
+    $("admin-bar").hidden = !authed;
+    if (authed) $("admin-name").textContent = adminSession.username || "";
+    var guard = $("call-guard");
+    if (!adminSession.configured) {
+      guard.textContent = "服务器还没有配置管理员，视频对讲已关闭。文字和照片仍可发送。";
+    } else if (!authed) {
+      guard.textContent = "视频对讲需要管理员登录。知道教室编号并不能发起通话。";
+    } else {
+      guard.textContent = "";
+    }
+    $("start-call").disabled = !authed;
+  }
+
+  async function refreshAdmin() {
+    try {
+      var res = await fetch("/api/v1/admin/session", { credentials: "same-origin", cache: "no-store" });
+      if (!res.ok) throw new Error("bad");
+      applyAdmin(await res.json());
+    } catch (e) {
+      applyAdmin({ configured: false, authenticated: false });
+    }
+  }
+
+  async function loginAdmin() {
+    $("login-error").textContent = "";
+    var username = $("admin-user").value.trim();
+    var password = $("admin-pass").value;
+    if (!username || !password) {
+      $("login-error").textContent = "请填写账号和密码";
+      return;
+    }
+    $("login-btn").disabled = true;
+    try {
+      var res = await fetch("/api/v1/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ username: username, password: password })
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) throw new Error(data.error || "登录失败");
+      $("admin-pass").value = "";
+      await refreshAdmin();
+    } catch (err) {
+      $("login-error").textContent = err.message || "登录失败";
+    } finally {
+      $("login-btn").disabled = false;
+    }
+  }
+
+  async function logoutAdmin() {
+    if (callId || !call.hidden) await hangup(true);
+    await fetch("/api/v1/admin/logout", { method: "POST", credentials: "same-origin" }).catch(function () {});
+    await refreshAdmin();
+  }
 
   function channel() { return localStorage.getItem("cn.channel") || ""; }
   function token() { return localStorage.getItem("cn.token") || ""; }
@@ -276,13 +337,20 @@
     showTokenField(!!token());
     show("setup");
   });
+  $("login-btn").addEventListener("click", loginAdmin);
+  $("admin-pass").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") loginAdmin();
+  });
+  $("logout").addEventListener("click", logoutAdmin);
 
 
   var pc = null;
   var localStream = null;
   var callId = "";
-  var callRole = "";
-  var pendingOffer = null;
+  var callBusy = false;
+  var callEpoch = 0;
+  var pendingIce = [];
+  var pendingRemoteIce = [];
   var es = null;
   var iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
 
@@ -298,22 +366,25 @@
       localStream = null;
     }
     $("local-video").srcObject = null;
-    $("remote-video").srcObject = null;
+    var remote = $("remote-video");
+    remote.srcObject = null;
+    remote.muted = false;
+  }
+
+  function attachRemote(stream) {
+    var el = $("remote-video");
+    el.muted = false;
+    el.volume = 1;
+    el.srcObject = stream;
+    if (typeof el.setSinkId === "function") {
+      el.setSinkId("default").catch(function () {});
+    }
+    var play = el.play();
+    if (play && play.catch) play.catch(function () {});
   }
 
   function closePeer() {
     if (pc) { try { pc.close(); } catch (e) {} pc = null; }
-  }
-
-  async function ensureMedia() {
-    if (localStream) return localStream;
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-    $("local-video").srcObject = localStream;
-    return localStream;
-  }
-
-  function newCallId() {
-    return "c-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   }
 
   async function postSignal(kind, id, sdp, candidate) {
@@ -325,7 +396,7 @@
         channel: channel(),
         token: token(),
         kind: kind,
-        from: "phone",
+        from: "admin",
         callId: id,
         sdp: sdp || "",
         candidate: candidate || ""
@@ -335,37 +406,19 @@
     if (!res.ok) throw new Error(data.error || "信令失败");
   }
 
-  async function createPeer() {
-    closePeer();
-    pc = new RTCPeerConnection({ iceServers: iceServers });
-    pc.ontrack = function (ev) {
-      $("remote-video").srcObject = ev.streams[0] || (ev.track && new MediaStream([ev.track]));
-    };
-    pc.onicecandidate = function (ev) {
-      if (!ev.candidate || !callId) return;
-      postSignal("ice", callId, "", JSON.stringify(ev.candidate)).catch(function () {});
-    };
-    pc.onconnectionstatechange = function () {
-      if (!pc) return;
-      setCallStatus("连接状态：" + pc.connectionState);
-    };
-    var stream = await ensureMedia();
-    stream.getTracks().forEach(function (t) { pc.addTrack(t, stream); });
-    return pc;
-  }
-
-  async function hangup(send) {
+  async function hangup(send, stay) {
+    callEpoch++;
     var id = callId;
     closePeer();
     stopMedia();
-    pendingOffer = null;
-    callRole = "";
+    pendingIce = [];
+    pendingRemoteIce = [];
+    callBusy = false;
     callId = "";
-    $("accept-call").hidden = true;
     if (send && id) {
       try { await postSignal("hangup", id, "", ""); } catch (e) {}
     }
-    show("compose");
+    if (!stay) show("compose");
   }
 
   function openSignalStream() {
@@ -377,80 +430,210 @@
     es.addEventListener("signal", function (ev) {
       try { onSignal(JSON.parse(ev.data)); } catch (e) {}
     });
-    es.onerror = function () {
-      // browser will retry
-    };
+    es.onerror = function () {};
+  }
+
+  async function addRemoteIce(raw) {
+    var cand = JSON.parse(raw);
+    if (!pc || !pc.remoteDescription) {
+      pendingRemoteIce.push(cand);
+      return;
+    }
+    await pc.addIceCandidate(cand);
+  }
+
+  async function flushRemoteIce() {
+    var queued = pendingRemoteIce;
+    pendingRemoteIce = [];
+    for (var i = 0; i < queued.length; i++) {
+      try { await pc.addIceCandidate(queued[i]); } catch (e) {}
+    }
+  }
+
+  function flushLocalIce() {
+    var queued = pendingIce;
+    pendingIce = [];
+    queued.forEach(function (payload) {
+      postSignal("ice", callId, "", payload).catch(function () {});
+    });
   }
 
   async function onSignal(sig) {
-    if (!sig || !sig.kind || sig.from === "phone") return;
+    if (!sig || !sig.kind || sig.from === "admin" || sig.from === "phone") return;
     if (sig.kind === "hangup") {
       if (!callId || sig.callId === callId) {
         hangup(false);
-        setCallStatus("对方已挂断");
+        setCallStatus("教室已挂断");
       }
       return;
     }
-    if (sig.kind === "offer" && sig.sdp) {
-      pendingOffer = { callId: sig.callId, sdp: sig.sdp };
-      show("call");
-      $("accept-call").hidden = false;
-      setCallStatus("讲台电脑来电，请接听");
-      return;
-    }
-    if (sig.kind === "answer" && sig.sdp && pc && callRole === "caller" && sig.callId === callId) {
+    if (sig.kind === "answer" && sig.sdp && pc && sig.callId === callId) {
       await pc.setRemoteDescription({ type: "answer", sdp: sig.sdp });
-      setCallStatus("对讲中");
+      await flushRemoteIce();
+      setCallStatus("通话中，双方都能看到并听到对方");
       return;
     }
-    if (sig.kind === "ice" && sig.candidate && pc && sig.callId === callId) {
-      try { await pc.addIceCandidate(JSON.parse(sig.candidate)); } catch (e) {}
+    if (sig.kind === "ice" && sig.candidate && sig.callId === callId) {
+      try { await addRemoteIce(sig.candidate); } catch (e) {}
     }
   }
 
   async function startCall() {
+    if (!adminSession || !adminSession.authenticated) {
+      $("call-guard").textContent = "请先登录管理员";
+      $("login").hidden = false;
+      return;
+    }
+    if (!adminSession.allClassrooms && (adminSession.classrooms || []).indexOf(channel()) === -1) {
+      $("call-guard").textContent = "这个账号不能呼叫该教室";
+      return;
+    }
+    if (callBusy || callId) {
+      setCallStatus("教室正在通话", true);
+      return;
+    }
     show("call");
-    $("accept-call").hidden = true;
+    var epoch = callEpoch;
+    callBusy = true;
     try {
       openSignalStream();
-      callId = newCallId();
-      callRole = "caller";
-      setCallStatus("正在呼叫讲台…");
+      var probe = await fetch("/api/v1/calls?channel=" + encodeURIComponent(channel()), {
+        credentials: "same-origin",
+        cache: "no-store"
+      });
+      var probeBody = await probe.json().catch(function () { return {}; });
+      if (probe.status === 401) {
+        callBusy = false;
+        applyAdmin({ configured: true, authenticated: false });
+        $("call-guard").textContent = "请先登录管理员";
+        show("compose");
+        return;
+      }
+      if (!probe.ok) {
+        callBusy = false;
+        $("call-guard").textContent = probeBody.error || "不能呼叫这间教室";
+        show("compose");
+        return;
+      }
+      if (probeBody.busy) {
+        callBusy = false;
+        $("call-guard").textContent = "教室正在通话";
+        show("compose");
+        return;
+      }
+      setCallStatus("正在打开本机摄像头和麦克风…");
       await createPeer();
+      if (epoch !== callEpoch || !pc) {
+        closePeer();
+        stopMedia();
+        callBusy = false;
+        setCallStatus("已取消", true);
+        return;
+      }
       var offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      await postSignal("offer", callId, offer.sdp, "");
-      setCallStatus("已发起，等待讲台接听");
+      setCallStatus("正在呼叫教室…");
+      var res = await fetch("/api/v1/calls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ channel: channel(), sdp: offer.sdp })
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (epoch !== callEpoch) {
+        if (res.ok && data.callId) {
+          callId = data.callId;
+          try { await postSignal("hangup", callId, "", ""); } catch (e) {}
+        }
+        closePeer();
+        stopMedia();
+        callBusy = false;
+        callId = "";
+        return;
+      }
+      if (res.status === 409 || data.busy) {
+        await hangup(false, true);
+        setCallStatus(data.error || "教室正在通话", true);
+        return;
+      }
+      if (!res.ok || !data.callId) {
+        await hangup(false, true);
+        setCallStatus(data.error || "不能发起通话", true);
+        return;
+      }
+      callId = data.callId;
+      flushLocalIce();
+      setCallStatus("已呼叫，等待教室自动接听");
     } catch (err) {
+      await hangup(false, true);
       setCallStatus(err.message || String(err), true);
     }
   }
 
-  async function acceptCall() {
-    if (!pendingOffer) return;
+  async function loadIce() {
     try {
-      callId = pendingOffer.callId;
-      callRole = "callee";
-      $("accept-call").hidden = true;
-      setCallStatus("正在接听…");
-      await createPeer();
-      await pc.setRemoteDescription({ type: "offer", sdp: pendingOffer.sdp });
-      var answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await postSignal("answer", callId, answer.sdp, "");
-      pendingOffer = null;
-      setCallStatus("对讲中");
-    } catch (err) {
-      setCallStatus(err.message || String(err), true);
+      var q = new URLSearchParams();
+      if (channel()) q.set("channel", channel());
+      if (token()) q.set("token", token());
+      var res = await fetch("/api/v1/ice?" + q.toString(), { credentials: "same-origin", cache: "no-store" });
+      if (!res.ok) return;
+      var data = await res.json();
+      if (data.iceServers && data.iceServers.length) iceServers = data.iceServers;
+    } catch (e) {}
+  }
+
+  async function createPeer() {
+    closePeer();
+    await loadIce();
+    pc = new RTCPeerConnection({ iceServers: iceServers });
+    var remoteStream = new MediaStream();
+    pc.ontrack = function (ev) {
+      if (ev.streams && ev.streams[0]) {
+        attachRemote(ev.streams[0]);
+        return;
+      }
+      remoteStream.addTrack(ev.track);
+      attachRemote(remoteStream);
+    };
+    pc.onicecandidate = function (ev) {
+      if (!ev.candidate) return;
+      var payload = JSON.stringify(ev.candidate);
+      if (!callId) {
+        pendingIce.push(payload);
+        return;
+      }
+      postSignal("ice", callId, "", payload).catch(function () {});
+    };
+    pc.onconnectionstatechange = function () {
+      if (!pc) return;
+      if (pc.connectionState === "connected") setCallStatus("通话中，双方都能看到并听到对方");
+      if (pc.connectionState === "failed") setCallStatus("对讲连接失败。若在校园网外，需要配置 TURN", true);
+    };
+    var stream = await ensureMedia();
+    stream.getTracks().forEach(function (t) { pc.addTrack(t, stream); });
+    return pc;
+  }
+
+  async function ensureMedia() {
+    if (localStream) return localStream;
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    if (!localStream.getAudioTracks().length || !localStream.getVideoTracks().length) {
+      localStream.getTracks().forEach(function (t) { t.stop(); });
+      localStream = null;
+      throw new Error("需要同时使用摄像头和麦克风");
     }
+    var local = $("local-video");
+    local.srcObject = localStream;
+    local.muted = true;
+    return localStream;
   }
 
   $("start-call").addEventListener("click", startCall);
-  $("accept-call").addEventListener("click", acceptCall);
   $("hangup").addEventListener("click", function () { hangup(true); });
 
 
   loadInfo().then(function () {
+    refreshAdmin();
     if (!channel()) {
       show("setup");
       return;

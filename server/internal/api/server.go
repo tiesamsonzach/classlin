@@ -30,15 +30,35 @@ type Server struct {
 
 	RatePerMin int
 	limiter    rateLimiter
+
+	Admins        AdminDir
+	Calls         *CallBook
+	ICE           ICEConfig
+	sessionSecret []byte
 }
 
 func New(st *store.Store, h *hub.Hub, token string) *Server {
 	return &Server{
-		Store:      st,
-		Hub:        h,
-		Token:      token,
-		MaxImage:   12 << 20,
-		RatePerMin: 30,
+		Store:         st,
+		Hub:           h,
+		Token:         token,
+		MaxImage:      12 << 20,
+		RatePerMin:    30,
+		Calls:         NewCallBook(),
+		ICE:           DefaultICE(),
+		sessionSecret: newSessionSecret(),
+	}
+}
+
+// ConfigureCalls installs admin accounts, ICE servers, and the session key.
+// An empty session key keeps the random key from New.
+func (s *Server) ConfigureCalls(admins AdminDir, ice ICEConfig, sessionSecret []byte) {
+	s.Admins = admins
+	if len(ice.STUNURLs) > 0 || len(ice.TURNURLs) > 0 {
+		s.ICE = ice
+	}
+	if len(sessionSecret) > 0 {
+		s.sessionSecret = sessionSecret
 	}
 }
 
@@ -53,6 +73,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/files/{id}", s.getFile)
 	mux.HandleFunc("GET /api/v1/stream", s.stream)
 	mux.HandleFunc("POST /api/v1/signal", s.postSignal)
+	mux.HandleFunc("POST /api/v1/admin/login", s.adminLogin)
+	mux.HandleFunc("POST /api/v1/admin/logout", s.adminLogout)
+	mux.HandleFunc("GET /api/v1/admin/session", s.adminSession)
+	mux.HandleFunc("GET /api/v1/ice", s.getICE)
+	mux.HandleFunc("GET /api/v1/calls", s.getCall)
+	mux.HandleFunc("POST /api/v1/calls", s.postCall)
+	mux.HandleFunc("POST /api/v1/calls/verify", s.verifyCall)
 	mux.Handle("GET /", web.Static())
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -68,10 +95,12 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) info(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"token_required":  s.Token != "",
-		"max_image_bytes": s.MaxImage,
-		"max_body_runes":  maxBodyRunes,
-		"version":         "1.0.0",
+		"token_required":      s.Token != "",
+		"max_image_bytes":     s.MaxImage,
+		"max_body_runes":      maxBodyRunes,
+		"version":             "1.1.0",
+		"admin_configured":    s.Admins.Configured(),
+		"calls_require_admin": true,
 	})
 }
 
@@ -405,41 +434,97 @@ func (s *Server) postSignal(w http.ResponseWriter, r *http.Request) {
 		CallID    string `json:"callId"`
 		SDP       string `json:"sdp"`
 		Candidate string `json:"candidate"`
+		AnswerKey string `json:"answerKey"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "内容格式不对")
 		return
 	}
-	channel := firstNonEmpty(body.Channel, channelFrom(r))
-	token := firstNonEmpty(body.Token, tokenFrom(r))
-	channel, err := s.authorize(channel, token)
-	if err != nil {
-		writeAuth(w, err)
-		return
-	}
 	kind := strings.TrimSpace(body.Kind)
 	from := strings.TrimSpace(body.From)
 	switch kind {
-	case "offer", "answer", "ice", "hangup", "ringing":
+	case "answer", "ice", "hangup":
+	case "offer":
+		// Offers are only created by POST /api/v1/calls after an admin session check.
+		writeError(w, http.StatusBadRequest, "请由已登录的管理员发起通话")
+		return
 	default:
 		writeError(w, http.StatusBadRequest, "不支持的信令类型")
 		return
 	}
+	if from == "phone" {
+		from = "admin"
+	}
 	switch from {
-	case "desktop", "phone":
+	case "desktop", "admin":
 	default:
-		writeError(w, http.StatusBadRequest, "from 只能是 desktop 或 phone")
+		writeError(w, http.StatusBadRequest, "from 只能是 desktop 或 admin")
 		return
 	}
 	callID := strings.TrimSpace(body.CallID)
-	if utf8.RuneCountInString(callID) > 64 {
-		writeError(w, http.StatusBadRequest, "callId 太长")
+	if callID == "" || utf8.RuneCountInString(callID) > 64 {
+		writeError(w, http.StatusBadRequest, "callId 不对")
 		return
 	}
 	if utf8.RuneCountInString(body.SDP) > 200000 || utf8.RuneCountInString(body.Candidate) > 8000 {
 		writeError(w, http.StatusBadRequest, "信令内容太大")
 		return
 	}
+	if kind == "answer" && (body.SDP == "" || !strings.HasPrefix(strings.TrimSpace(body.SDP), "v=")) {
+		writeError(w, http.StatusBadRequest, "通话描述不对")
+		return
+	}
+
+	var channel string
+	var adminUser string
+	switch from {
+	case "desktop":
+		var err error
+		channel, err = s.authorize(firstNonEmpty(body.Channel, channelFrom(r)), firstNonEmpty(body.Token, tokenFrom(r)))
+		if err != nil {
+			writeAuth(w, err)
+			return
+		}
+	default:
+		if !s.Admins.Configured() {
+			writeError(w, http.StatusForbidden, "服务器还没有配置管理员，不能发起视频通话")
+			return
+		}
+		var err error
+		adminUser, err = s.adminFromRequest(r)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "请先登录管理员")
+			return
+		}
+		channel = strings.TrimSpace(firstNonEmpty(body.Channel, channelFrom(r)))
+		if !ValidChannel(channel) {
+			writeError(w, http.StatusBadRequest, "教室编号请用 1–32 个字符，不要空格")
+			return
+		}
+		if !s.Admins.Allow(adminUser, channel) {
+			writeError(w, http.StatusForbidden, "这个管理员不能呼叫该教室")
+			return
+		}
+	}
+
+	var err error
+	switch kind {
+	case "answer":
+		if from != "desktop" {
+			writeError(w, http.StatusForbidden, "只有教室端可以接听")
+			return
+		}
+		err = s.Calls.Answer(channel, callID, body.AnswerKey)
+	case "ice":
+		err = s.Calls.AllowICE(channel, callID, from, body.AnswerKey, adminUser)
+	case "hangup":
+		err = s.Calls.Hangup(channel, callID, from, body.AnswerKey, adminUser)
+	}
+	if err != nil {
+		writeCallErr(w, err)
+		return
+	}
+
 	out := map[string]any{
 		"kind":   kind,
 		"from":   from,
@@ -451,8 +536,7 @@ func (s *Server) postSignal(w http.ResponseWriter, r *http.Request) {
 	if body.Candidate != "" {
 		out["candidate"] = body.Candidate
 	}
-	payload := mustJSON(out)
-	s.Hub.PublishEvent(channel, "signal", payload)
+	s.Hub.PublishEvent(channel, "signal", mustJSON(out))
 	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
 }
 
